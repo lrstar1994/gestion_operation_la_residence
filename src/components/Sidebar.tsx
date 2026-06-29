@@ -3,6 +3,7 @@ import {
   Building2,
   CalendarDays,
   DoorOpen,
+  History,
   Home,
   ClipboardCheck,
   Repeat,
@@ -139,6 +140,7 @@ function SidebarContent({
         {peutVoirPlanning && <MenuLink to="/planning" icon={CalendarDays} label="Planning" />}
         {peutVoirTachesPeriodiques && <MenuLink to="/taches-periodiques" icon={Repeat} label="Taches periodiques" />}
         {peutVoirMaintenance && <MenuLink to="/interventions-maintenance" icon={Wrench} label="Interventions" />}
+        {estAdmin && <MenuLink to="/historique-interventions" icon={History} label="Historique interventions" />}
         {peutVoirPlanningChambres && <MenuLink to="/planning-chambres" icon={DoorOpen} label="Planning chambres" />}
         {peutVoirPlanningChambres && <MenuLink to="/suivi-operationnel" icon={ClipboardCheck} label="Suivi operationnel" badge={bloquesAujourdhui} />}
         <MenuLink to="/lieux" icon={MapPin} label="Lieux" />

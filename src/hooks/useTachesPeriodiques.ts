@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { listerExecutants, type Executant } from '../api/executants'
-import { listerLieux, type Lieu } from '../api/lieux'
+import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
 import { listerPlanning, type PlanningExecutant } from '../api/planning'
 import { listerEtatsMouvement, listerPlanningChambre, type EtatMouvement, type PlanningChambre } from '../api/planningChambre'
 import {
@@ -173,7 +173,7 @@ function scoreTache(item: TachePeriodiquePlanning, classification: Classificatio
 
 function estLieuDisponible(lieu: Lieu | null | undefined, date: string, planningChambres: PlanningChambre[]) {
   if (!lieu) return false
-  if (lieu.categorie?.code !== 'chambre') return true
+  if (!estLieuChambre(lieu)) return true
   return !planningChambres.some((mouvement) => mouvement.id_lieu === lieu.id && mouvement.date === date)
 }
 

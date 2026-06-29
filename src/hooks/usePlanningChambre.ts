@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { listerExecutants, type Executant } from '../api/executants'
-import { listerLieux, type Lieu } from '../api/lieux'
+import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
 import { listerPlanning, type PlanningExecutant } from '../api/planning'
 import { listerHistoriqueTachesPeriodiques, listerPlanningTachesPeriodiques, type TachePeriodiqueHistorique, type TachePeriodiquePlanning } from '../api/tachesPeriodiques'
 import {
@@ -76,7 +76,7 @@ export function usePlanningChambre(dateDebut: string, dateFin?: string) {
         listerHistoriqueTachesPeriodiques(),
       ])
 
-      setChambres(lieuxResultat.filter((lieu) => lieu.est_actif && lieu.categorie?.code === 'chambre'))
+      setChambres(lieuxResultat.filter((lieu) => lieu.est_actif && estLieuChambre(lieu)))
       setExecutants(executantsResultat.filter((executant) => executant.domaine?.nom.toLowerCase().includes('chambre')))
       setTypesMouvement(typesResultat)
       setEtats(etatsResultat)

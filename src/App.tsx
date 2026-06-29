@@ -8,6 +8,7 @@ import { GestionExecutants } from './pages/GestionExecutants'
 import { GestionLieux } from './pages/GestionLieux'
 import { GestionTypesMouvement } from './pages/GestionTypesMouvement'
 import { GestionUtilisateurs } from './pages/GestionUtilisateurs'
+import { HistoriqueInterventions } from './pages/HistoriqueInterventions'
 import { Inscription } from './pages/Inscription'
 import { InterventionsMaintenance } from './pages/InterventionsMaintenance'
 import { PageDomaine } from './pages/PageDomaine'
@@ -49,6 +50,7 @@ function LayoutPrive() {
           <Route element={<ProtectedRoute adminOnly />}>
             <Route path="users" element={<GestionUtilisateurs />} />
             <Route path="types-mouvement" element={<GestionTypesMouvement />} />
+            <Route path="historique-interventions" element={<HistoriqueInterventions />} />
             <Route path="admin" element={<TableauDeBord />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

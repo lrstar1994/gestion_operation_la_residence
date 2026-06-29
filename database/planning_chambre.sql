@@ -53,6 +53,7 @@ SET points = EXCLUDED.points;
 
 INSERT INTO public.etat_mouvement (nom)
 VALUES
+  ('A_FAIRE'),
   ('AFFECTE'),
   ('EN_COURS'),
   ('BLOQUE'),
@@ -82,13 +83,13 @@ DECLARE
   categorie_code text;
   etat_affecte_id uuid;
 BEGIN
-  SELECT c.code
+  SELECT lower(trim(c.code))
   INTO categorie_code
   FROM public.lieux l
   JOIN public.categories_lieu c ON c.id = l.id_categorie
   WHERE l.id = NEW.id_lieu;
 
-  IF categorie_code IS DISTINCT FROM 'chambre' THEN
+  IF categorie_code NOT IN ('chambre', 'chambres') THEN
     RAISE EXCEPTION 'Le planning chambre ne peut concerner que des lieux de categorie chambre.';
   END IF;
 

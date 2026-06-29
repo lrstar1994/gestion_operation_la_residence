@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { listerExecutants, type Executant } from '../api/executants'
 import { listerInterventionsMaintenance, type InterventionMaintenance } from '../api/interventionsMaintenance'
-import { listerLieux, type Lieu } from '../api/lieux'
+import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
 import { listerHistoriqueTachesPeriodiques, listerPlanningTachesPeriodiques, type TachePeriodiqueHistorique, type TachePeriodiquePlanning } from '../api/tachesPeriodiques'
 import { listerMouvementsSuivi } from '../api/suiviOperationnel'
 import { useAuth } from '../hooks/useAuth'
@@ -76,7 +76,7 @@ export function TableauDeBord() {
     return () => window.clearInterval(interval)
   }, [charger])
 
-  const chambres = useMemo(() => lieux.filter((lieu) => lieu.categorie?.code === 'chambre'), [lieux])
+  const chambres = useMemo(() => lieux.filter((lieu) => estLieuChambre(lieu)), [lieux])
   const chambresPlanifiees = useMemo(() => new Set(mouvements.map((mouvement) => mouvement.id_lieu)), [mouvements])
   const occupation = chambres.length ? Math.round((chambresPlanifiees.size / chambres.length) * 100) : 0
 

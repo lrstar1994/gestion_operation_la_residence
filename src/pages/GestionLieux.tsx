@@ -15,6 +15,7 @@ import {
   supprimerBatiment,
   supprimerCategorieLieu,
   supprimerLieu,
+  estLieuChambre,
   type Batiment,
   type CategorieLieu,
   type Lieu,
@@ -145,7 +146,7 @@ export function GestionLieux() {
     () => ({
       total: lieuxFiltres.length,
       actifs: lieuxFiltres.filter((lieu) => lieu.est_actif).length,
-      chambres: lieuxFiltres.filter((lieu) => lieu.categorie?.code === 'chambre').length,
+      chambres: lieuxFiltres.filter((lieu) => estLieuChambre(lieu)).length,
       batiments: lieuxParBatiment.length,
     }),
     [lieuxFiltres, lieuxParBatiment.length],

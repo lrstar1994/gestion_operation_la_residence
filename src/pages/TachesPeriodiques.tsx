@@ -138,7 +138,20 @@ export function TachesPeriodiques() {
   async function creerOccurrence(tache: TachePeriodique, idLieu: string, dateEcheance: string) {
     const etatAFaire = etats.find((etat) => etat.nom === 'A_FAIRE')
 
-    if (!idLieu || !dateEcheance || !etatAFaire) return
+    if (!idLieu) {
+      toast.error('Choisissez un lieu.')
+      return
+    }
+
+    if (!dateEcheance) {
+      toast.error('Choisissez une date echeance.')
+      return
+    }
+
+    if (!etatAFaire) {
+      toast.error("L'etat A faire est introuvable. Execute le script SQL des taches periodiques dans Supabase.")
+      return
+    }
 
     const occurrenceExistante = planning.find((item) => item.id_tache === tache.id && item.id_lieu === idLieu)
     if (occurrenceExistante) {
@@ -459,10 +472,20 @@ export function TachesPeriodiques() {
   )
 }
 
-function OccurrenceModal({ tache, lieux, onClose, onSubmit }: { tache: TachePeriodique; lieux: Array<{ id: string; nom: string; id_categorie: string; est_actif: boolean; batiment?: { nom: string } | null }>; onClose: () => void; onSubmit: (tache: TachePeriodique, idLieu: string, dateEcheance: string) => void }) {
+function OccurrenceModal({ tache, lieux, onClose, onSubmit }: { tache: TachePeriodique; lieux: Array<{ id: string; nom: string; id_categorie: string; est_actif: boolean; batiment?: { nom: string } | null }>; onClose: () => void; onSubmit: (tache: TachePeriodique, idLieu: string, dateEcheance: string) => Promise<void> }) {
   const [idLieu, setIdLieu] = useState('')
   const [date, setDate] = useState(formatDateInput(new Date()))
+  const [soumission, setSoumission] = useState(false)
   const lieuxCompatibles = lieux.filter((lieu) => lieu.est_actif && (!tache.id_categorie_lieu || lieu.id_categorie === tache.id_categorie_lieu))
+
+  async function creer() {
+    setSoumission(true)
+    try {
+      await onSubmit(tache, idLieu, date)
+    } finally {
+      setSoumission(false)
+    }
+  }
 
   return (
     <Modal title="Creer une echeance" onClose={onClose}>
@@ -476,8 +499,8 @@ function OccurrenceModal({ tache, lieux, onClose, onSubmit }: { tache: TachePeri
       </Champ>
       <Champ label="Date echeance"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} /></Champ>
       <div className="mt-4 flex justify-end gap-2">
-        <button onClick={onClose} className="rounded-md border px-3 py-2 text-sm font-semibold">Annuler</button>
-        <button onClick={() => onSubmit(tache, idLieu, date)} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white">Creer</button>
+        <button type="button" onClick={onClose} className="rounded-md border px-3 py-2 text-sm font-semibold">Annuler</button>
+        <button type="button" disabled={soumission} onClick={() => void creer()} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{soumission ? 'Creation...' : 'Creer'}</button>
       </div>
     </Modal>
   )

@@ -53,6 +53,13 @@ const selectBatiment = 'id,code,nom,id_executant_defaut,executant_defaut:executa
 const selectCategorie = 'id,code,nom'
 const selectLieu = 'id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)'
 
+export function estLieuChambre(lieu: Pick<Lieu, 'categorie'>) {
+  const code = lieu.categorie?.code?.trim().toLowerCase() || ''
+  const nom = lieu.categorie?.nom?.trim().toLowerCase() || ''
+
+  return ['chambre', 'chambres'].includes(code) || nom.includes('chambre')
+}
+
 export async function listerBatiments() {
   const { data, error } = await supabase
     .from('batiments')
