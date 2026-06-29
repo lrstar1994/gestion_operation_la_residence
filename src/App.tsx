@@ -11,6 +11,7 @@ import { GestionUtilisateurs } from './pages/GestionUtilisateurs'
 import { HistoriqueInterventions } from './pages/HistoriqueInterventions'
 import { Inscription } from './pages/Inscription'
 import { InterventionsMaintenance } from './pages/InterventionsMaintenance'
+import { MenagesChambres } from './pages/MenagesChambres'
 import { PageDomaine } from './pages/PageDomaine'
 import { PlanningChambres } from './pages/PlanningChambres'
 import { PlanningHebdomadaire } from './pages/PlanningHebdomadaire'
@@ -45,6 +46,7 @@ function LayoutPrive() {
           </Route>
           <Route element={<ProtectedRoute domaine="chambres" />}>
             <Route path="planning-chambres" element={<PlanningChambres />} />
+            <Route path="menages-chambres" element={<MenagesChambres />} />
             <Route path="suivi-operationnel" element={<SuiviOperational />} />
           </Route>
           <Route element={<ProtectedRoute adminOnly />}>

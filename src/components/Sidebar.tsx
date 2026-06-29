@@ -6,6 +6,7 @@ import {
   History,
   Home,
   ClipboardCheck,
+  Sparkles,
   Repeat,
   LogOut,
   MapPin,
@@ -142,6 +143,7 @@ function SidebarContent({
         {peutVoirMaintenance && <MenuLink to="/interventions-maintenance" icon={Wrench} label="Interventions" />}
         {estAdmin && <MenuLink to="/historique-interventions" icon={History} label="Historique interventions" />}
         {peutVoirPlanningChambres && <MenuLink to="/planning-chambres" icon={DoorOpen} label="Planning chambres" />}
+        {peutVoirPlanningChambres && <MenuLink to="/menages-chambres" icon={Sparkles} label="Menages chambres" />}
         {peutVoirPlanningChambres && <MenuLink to="/suivi-operationnel" icon={ClipboardCheck} label="Suivi operationnel" badge={bloquesAujourdhui} />}
         <MenuLink to="/lieux" icon={MapPin} label="Lieux" />
         {peutVoirExecutants && <MenuLink to="/executants" icon={UserRoundCog} label="Executants" />}
