@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS public.intervention_maintenance (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   titre varchar(200) NOT NULL,
   description text,
+  travail_a_faire text,
   id_lieu uuid NOT NULL REFERENCES public.lieux(id) ON DELETE CASCADE,
   date_intervention date NOT NULL,
   priorite varchar(20) NOT NULL DEFAULT 'normale' CHECK (priorite IN ('basse', 'normale', 'urgente')),

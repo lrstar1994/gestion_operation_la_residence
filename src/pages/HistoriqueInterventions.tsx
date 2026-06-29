@@ -77,6 +77,7 @@ export function HistoriqueInterventions() {
       return [
         intervention.titre,
         intervention.description,
+        intervention.travail_a_faire,
         intervention.lieu?.nom,
         intervention.lieu?.batiment?.nom,
         intervention.executant?.nom,
@@ -242,6 +243,7 @@ export function HistoriqueInterventions() {
                         <td className="px-3 py-3">
                           <p className="font-medium text-slate-900">{intervention.titre}</p>
                           {intervention.description && <p className="line-clamp-1 text-xs text-slate-500">{intervention.description}</p>}
+                          {intervention.travail_a_faire && <p className="line-clamp-1 text-xs text-teal-700">Travail : {intervention.travail_a_faire}</p>}
                         </td>
                         <td className="px-3 py-3"><Badge tone={couleurPriorite(intervention.priorite)}>{intervention.priorite}</Badge></td>
                         <td className="px-3 py-3"><Badge tone={couleurEtat(intervention.etat?.nom)}>{libelleEtat(intervention.etat?.nom)}</Badge></td>
@@ -307,6 +309,8 @@ function DetailHistorique({ intervention, onClose }: { intervention: Interventio
             <Info label="Executant" value={intervention.executant?.nom || '-'} />
             <Info label="Priorite" value={intervention.priorite} />
             <Info label="Etat" value={libelleEtat(intervention.etat?.nom)} />
+            {intervention.description && <Info label="Description" value={intervention.description} />}
+            {intervention.travail_a_faire && <Info label="Travail a faire" value={intervention.travail_a_faire} />}
             <Info label="Date fermeture" value={intervention.date_fermeture ? formatDateHeure(intervention.date_fermeture) : '-'} />
             {intervention.commentaire_fermeture && <Info label="Commentaire fermeture" value={intervention.commentaire_fermeture} />}
             <div className="grid grid-cols-2 gap-2 pt-2">

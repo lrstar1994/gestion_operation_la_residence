@@ -97,6 +97,7 @@ export function InterventionsMaintenance() {
       return [
         intervention.titre,
         intervention.description,
+        intervention.travail_a_faire,
         intervention.lieu?.nom,
         intervention.executant?.nom,
       ].filter(Boolean).join(' ').toLowerCase().includes(terme)
@@ -422,6 +423,7 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onChangerE
           <Info label="Etat" value={libelleEtat(intervention.etat?.nom)} />
           <Info label="Executant" value={intervention.executant?.nom || 'Non attribue'} />
           {intervention.description && <Info label="Description" value={intervention.description} />}
+          {intervention.travail_a_faire && <Info label="Travail a faire" value={intervention.travail_a_faire} />}
           {intervention.commentaire_fermeture && <Info label="Fermeture" value={intervention.commentaire_fermeture} />}
 
           {!ferme && (
@@ -498,6 +500,7 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
   const etatAffecte = etats.find((etat) => etat.nom === 'AFFECTE')
   const [titre, setTitre] = useState(intervention?.titre || '')
   const [description, setDescription] = useState(intervention?.description || '')
+  const [travailAFaire, setTravailAFaire] = useState(intervention?.travail_a_faire || '')
   const [idLieu, setIdLieu] = useState(intervention?.id_lieu || '')
   const [dateIntervention, setDateIntervention] = useState(intervention?.date_intervention || formatDateInput(new Date()))
   const [priorite, setPriorite] = useState<PrioriteIntervention>(intervention?.priorite || 'normale')
@@ -518,6 +521,7 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
       await onSubmit({
         titre: titre.trim(),
         description: description.trim() || null,
+        travail_a_faire: travailAFaire.trim() || null,
         id_lieu: idLieu,
         date_intervention: dateIntervention,
         priorite,
@@ -537,6 +541,7 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
       <form onSubmit={soumettre} className="space-y-3">
         <Champ label="Titre"><input value={titre} onChange={(event) => setTitre(event.target.value)} className={inputClass} /></Champ>
         <Champ label="Description"><textarea value={description} onChange={(event) => setDescription(event.target.value)} className={textareaClass} /></Champ>
+        <Champ label="Travail a faire"><textarea value={travailAFaire} onChange={(event) => setTravailAFaire(event.target.value)} className={textareaClass} /></Champ>
         <Champ label="Lieu">
           <select value={idLieu} onChange={(event) => setIdLieu(event.target.value)} className={inputClass}>
             <option value="">Choisir</option>
