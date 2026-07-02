@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight, Save, Search, SlidersHorizontal, X } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Save, Search, SlidersHorizontal, Users, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { listerDomainesExecutants, listerExecutants, type DomaineExecutant, type Executant } from '../api/executants'
 import {
