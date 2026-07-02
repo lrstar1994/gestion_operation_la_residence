@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   Camera,
   CheckCircle2,
-  ClipboardList,
   Eye,
   ImagePlus,
   Loader2,
@@ -42,7 +41,7 @@ type ModeModal = 'creation' | 'edition'
 
 const priorites: PrioriteIntervention[] = ['basse', 'normale', 'urgente']
 const typesPhoto: TypePhotoIntervention[] = ['avant', 'progression', 'apres', 'anomalie', 'detail']
-const etatsIntervention = ['AFFECTE', 'EN_COURS', 'BLOQUE', 'TERMINE']
+const etatsIntervention = ['AFFECTE', 'EN_COURS', 'BLOQUE']
 
 export function InterventionsMaintenance() {
   const [interventions, setInterventions] = useState<InterventionMaintenance[]>([])
@@ -86,9 +85,14 @@ export function InterventionsMaintenance() {
     void charger()
   }, [charger])
 
+  const interventionsActives = useMemo(
+    () => interventions.filter((intervention) => intervention.etat?.nom !== 'TERMINE'),
+    [interventions],
+  )
+
   const interventionsFiltrees = useMemo(() => {
     const terme = recherche.trim().toLowerCase()
-    return interventions.filter((intervention) => {
+    return interventionsActives.filter((intervention) => {
       if (etatFiltre !== 'tous' && intervention.etat?.nom !== etatFiltre) return false
       if (prioriteFiltre !== 'tous' && intervention.priorite !== prioriteFiltre) return false
       if (lieuFiltre !== 'tous' && intervention.id_lieu !== lieuFiltre) return false
@@ -102,16 +106,7 @@ export function InterventionsMaintenance() {
         intervention.executant?.nom,
       ].filter(Boolean).join(' ').toLowerCase().includes(terme)
     })
-  }, [etatFiltre, interventions, lieuFiltre, prioriteFiltre, recherche])
-
-  const resume = useMemo(() => {
-    return interventions.reduce<Record<string, number>>((acc, intervention) => {
-      const etat = intervention.etat?.nom || 'AFFECTE'
-      acc[etat] = (acc[etat] || 0) + 1
-      acc.total += 1
-      return acc
-    }, { total: 0 })
-  }, [interventions])
+  }, [etatFiltre, interventionsActives, lieuFiltre, prioriteFiltre, recherche])
 
   function interventionMaj(intervention: InterventionMaintenance) {
     setInterventions((liste) => liste.map((item) => item.id === intervention.id ? intervention : item))
@@ -280,13 +275,6 @@ export function InterventionsMaintenance() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <ResumeCard label="En cours" value={resume.EN_COURS || 0} tone="orange" />
-        <ResumeCard label="Bloquees" value={resume.BLOQUE || 0} tone="red" />
-        <ResumeCard label="Terminees" value={resume.TERMINE || 0} tone="green" />
-        <ResumeCard label="Total" value={resume.total || 0} tone="slate" />
-      </div>
-
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="grid gap-2 border-b border-slate-200 p-4 md:grid-cols-[1fr_180px_180px_220px]">
           <label className="relative">
@@ -373,7 +361,7 @@ function InterventionRow({ intervention, onVoir, onModifier, onPhotos, onSupprim
           </div>
           <h2 className="mt-2 truncate text-base font-semibold text-slate-950">{intervention.titre}</h2>
           <p className="mt-1 text-sm text-slate-500">
-            {formatDate(intervention.date_intervention)} - {nomLieu(intervention.lieu)} - {intervention.executant?.nom || 'Non attribue'}
+            {formatPeriodeIntervention(intervention)} - {nomLieu(intervention.lieu)} - {intervention.executant?.nom || 'Non attribue'}
           </p>
           <p className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
             <span>Avant: {compte.avant}</span>
@@ -418,7 +406,7 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onChangerE
       <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
           <Info label="Lieu" value={nomLieu(intervention.lieu)} />
-          <Info label="Date" value={formatDate(intervention.date_intervention)} />
+          <Info label="Periode" value={formatPeriodeIntervention(intervention)} />
           <Info label="Priorite" value={libellePriorite(intervention.priorite)} />
           <Info label="Etat" value={libelleEtat(intervention.etat?.nom)} />
           <Info label="Executant" value={intervention.executant?.nom || 'Non attribue'} />
@@ -503,6 +491,9 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
   const [travailAFaire, setTravailAFaire] = useState(intervention?.travail_a_faire || '')
   const [idLieu, setIdLieu] = useState(intervention?.id_lieu || '')
   const [dateIntervention, setDateIntervention] = useState(intervention?.date_intervention || formatDateInput(new Date()))
+  const [heureDebut, setHeureDebut] = useState(intervention?.heure_debut?.slice(0, 5) || '')
+  const [dateFin, setDateFin] = useState(intervention?.date_fin || intervention?.date_intervention || formatDateInput(new Date()))
+  const [heureFin, setHeureFin] = useState(intervention?.heure_fin?.slice(0, 5) || '')
   const [priorite, setPriorite] = useState<PrioriteIntervention>(intervention?.priorite || 'normale')
   const [idExecutant, setIdExecutant] = useState(intervention?.id_executant || '')
   const [fichiersAvant, setFichiersAvant] = useState<File[]>([])
@@ -516,6 +507,16 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
       return
     }
 
+    if (dateFin && dateFin < dateIntervention) {
+      toast.error('La date fin doit etre apres la date debut.')
+      return
+    }
+
+    if (dateFin === dateIntervention && heureDebut && heureFin && heureFin <= heureDebut) {
+      toast.error("L'heure fin doit etre apres l'heure debut.")
+      return
+    }
+
     setSoumission(true)
     try {
       await onSubmit({
@@ -524,6 +525,9 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
         travail_a_faire: travailAFaire.trim() || null,
         id_lieu: idLieu,
         date_intervention: dateIntervention,
+        heure_debut: heureDebut || null,
+        date_fin: dateFin || dateIntervention,
+        heure_fin: heureFin || null,
         priorite,
         id_executant: idExecutant || null,
         id_etat: intervention?.id_etat || etatAffecte.id,
@@ -549,7 +553,13 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
           </select>
         </Champ>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Champ label="Date"><input type="date" value={dateIntervention} onChange={(event) => setDateIntervention(event.target.value)} className={inputClass} /></Champ>
+          <Champ label="Date debut"><input type="date" value={dateIntervention} onChange={(event) => {
+            setDateIntervention(event.target.value)
+            if (!dateFin || dateFin < event.target.value) setDateFin(event.target.value)
+          }} className={inputClass} /></Champ>
+          <Champ label="Heure debut"><input type="time" value={heureDebut} onChange={(event) => setHeureDebut(event.target.value)} className={inputClass} /></Champ>
+          <Champ label="Date fin"><input type="date" value={dateFin} onChange={(event) => setDateFin(event.target.value)} className={inputClass} /></Champ>
+          <Champ label="Heure fin"><input type="time" value={heureFin} onChange={(event) => setHeureFin(event.target.value)} className={inputClass} /></Champ>
           <Champ label="Priorite"><select value={priorite} onChange={(event) => setPriorite(event.target.value as PrioriteIntervention)} className={inputClass}>{priorites.map((item) => <option key={item} value={item}>{libellePriorite(item)}</option>)}</select></Champ>
         </div>
         <Champ label="Executant">
@@ -655,17 +665,6 @@ function FermetureModal({ intervention, onClose, onSubmit }: {
   )
 }
 
-function ResumeCard({ label, value, tone }: { label: string; value: number; tone: 'red' | 'orange' | 'green' | 'slate' }) {
-  const classes = {
-    red: 'border-rose-200 bg-rose-50 text-rose-800',
-    orange: 'border-amber-200 bg-amber-50 text-amber-800',
-    green: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-    slate: 'border-slate-200 bg-white text-slate-800',
-  }
-
-  return <div className={`rounded-lg border p-4 ${classes[tone]}`}><p className="text-sm font-medium">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p></div>
-}
-
 function VerificationPhoto({ ok, texte }: { ok: boolean; texte: string }) {
   return <div className={ok ? 'flex items-center gap-2 text-sm font-medium text-emerald-700' : 'flex items-center gap-2 text-sm font-medium text-rose-700'}>{ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{texte}</div>
 }
@@ -746,6 +745,19 @@ function formatDate(date: string) {
 
 function formatDateHeure(date: string) {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(date))
+}
+
+function formatPeriodeIntervention(intervention: InterventionMaintenance) {
+  const debut = `${formatDate(intervention.date_intervention)}${intervention.heure_debut ? ` ${formatHeure(intervention.heure_debut)}` : ''}`
+  const dateFin = intervention.date_fin || intervention.date_intervention
+  const fin = `${formatDate(dateFin)}${intervention.heure_fin ? ` ${formatHeure(intervention.heure_fin)}` : ''}`
+
+  if (dateFin === intervention.date_intervention && !intervention.heure_fin) return debut
+  return `${debut} -> ${fin}`
+}
+
+function formatHeure(heure: string) {
+  return heure.slice(0, 5)
 }
 
 function formatDateInput(date: Date) {

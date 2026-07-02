@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CalendarDays, Camera, Eye, Loader2, MapPin, RefreshCcw, Search, Trash2, Wrench, X } from 'lucide-react'
+import { Camera, Eye, Loader2, RefreshCcw, Search, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   compterPhotosParType,
@@ -29,7 +29,6 @@ export function HistoriqueInterventions() {
   const [actionEnCours, setActionEnCours] = useState<string | null>(null)
   const [recherche, setRecherche] = useState('')
   const [lieuFiltre, setLieuFiltre] = useState('tous')
-  const [etatFiltre, setEtatFiltre] = useState('tous')
   const [prioriteFiltre, setPrioriteFiltre] = useState<PrioriteIntervention | 'tous'>('tous')
   const [dateDebut, setDateDebut] = useState('')
   const [dateFin, setDateFin] = useState('')
@@ -57,17 +56,12 @@ export function HistoriqueInterventions() {
     void charger()
   }, [charger])
 
-  const etats = useMemo(
-    () => Array.from(new Set(interventions.map((intervention) => intervention.etat?.nom).filter(Boolean))).sort() as string[],
-    [interventions],
-  )
-
   const interventionsFiltrees = useMemo(() => {
     const terme = recherche.trim().toLowerCase()
 
     return interventions.filter((intervention) => {
+      if (intervention.etat?.nom !== 'TERMINE') return false
       if (lieuFiltre !== 'tous' && intervention.id_lieu !== lieuFiltre) return false
-      if (etatFiltre !== 'tous' && intervention.etat?.nom !== etatFiltre) return false
       if (prioriteFiltre !== 'tous' && intervention.priorite !== prioriteFiltre) return false
       if (dateDebut && intervention.date_intervention < dateDebut) return false
       if (dateFin && intervention.date_intervention > dateFin) return false
@@ -81,10 +75,9 @@ export function HistoriqueInterventions() {
         intervention.lieu?.nom,
         intervention.lieu?.batiment?.nom,
         intervention.executant?.nom,
-        intervention.etat?.nom,
       ].filter(Boolean).join(' ').toLowerCase().includes(terme)
     })
-  }, [dateDebut, dateFin, etatFiltre, interventions, lieuFiltre, prioriteFiltre, recherche])
+  }, [dateDebut, dateFin, interventions, lieuFiltre, prioriteFiltre, recherche])
 
   const groupes = useMemo(() => {
     const map = new Map<string, GroupeLieu>()
@@ -110,14 +103,6 @@ export function HistoriqueInterventions() {
       }))
       .sort((a, b) => a.titre.localeCompare(b.titre))
   }, [interventionsFiltrees])
-
-  const resume = useMemo(() => {
-    const terminees = interventionsFiltrees.filter((item) => item.etat?.nom === 'TERMINE').length
-    const bloquees = interventionsFiltrees.filter((item) => item.etat?.nom === 'BLOQUE').length
-    const urgentes = interventionsFiltrees.filter((item) => item.priorite === 'urgente').length
-
-    return { total: interventionsFiltrees.length, lieux: groupes.length, terminees, bloquees, urgentes }
-  }, [groupes.length, interventionsFiltrees])
 
   async function supprimerHistorique(intervention: InterventionMaintenance) {
     if (!estAdmin()) {
@@ -155,7 +140,7 @@ export function HistoriqueInterventions() {
         <div>
           <p className="text-xs font-semibold uppercase text-teal-700">Maintenance</p>
           <h1 className="text-xl font-bold text-slate-950 sm:text-2xl">Historique des interventions</h1>
-          <p className="mt-1 text-sm text-slate-500">Archives des interventions regroupees par lieu.</p>
+          <p className="mt-1 text-sm text-slate-500">Interventions terminees regroupees par lieu.</p>
         </div>
         <button
           type="button"
@@ -167,16 +152,8 @@ export function HistoriqueInterventions() {
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Historiques" value={resume.total} icon={Wrench} />
-        <StatCard label="Lieux concernes" value={resume.lieux} icon={MapPin} />
-        <StatCard label="Terminees" value={resume.terminees} icon={CalendarDays} />
-        <StatCard label="Bloquees" value={resume.bloquees} icon={AlertTriangle} tone="red" />
-        <StatCard label="Urgentes" value={resume.urgentes} icon={AlertTriangle} tone="orange" />
-      </div>
-
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-5">
           <label className="relative xl:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -189,10 +166,6 @@ export function HistoriqueInterventions() {
           <select value={lieuFiltre} onChange={(event) => setLieuFiltre(event.target.value)} className={inputClass}>
             <option value="tous">Tous les lieux</option>
             {lieux.map((lieu) => <option key={lieu.id} value={lieu.id}>{nomLieu(lieu)}</option>)}
-          </select>
-          <select value={etatFiltre} onChange={(event) => setEtatFiltre(event.target.value)} className={inputClass}>
-            <option value="tous">Tous les etats</option>
-            {etats.map((etat) => <option key={etat} value={etat}>{libelleEtat(etat)}</option>)}
           </select>
           <select value={prioriteFiltre} onChange={(event) => setPrioriteFiltre(event.target.value as PrioriteIntervention | 'tous')} className={inputClass}>
             {priorites.map((priorite) => <option key={priorite} value={priorite}>{priorite === 'tous' ? 'Toutes priorites' : priorite}</option>)}
@@ -227,7 +200,7 @@ export function HistoriqueInterventions() {
                 <table className="min-w-[900px] w-full text-sm">
                   <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
                     <tr>
-                      <th className="px-3 py-2">Date</th>
+                      <th className="px-3 py-2">Periode</th>
                       <th className="px-3 py-2">Intervention</th>
                       <th className="px-3 py-2">Priorite</th>
                       <th className="px-3 py-2">Etat</th>
@@ -239,7 +212,7 @@ export function HistoriqueInterventions() {
                   <tbody className="divide-y divide-slate-100">
                     {groupe.interventions.map((intervention) => (
                       <tr key={intervention.id} className="hover:bg-slate-50">
-                        <td className="px-3 py-3 text-slate-600">{formatDate(intervention.date_intervention)}</td>
+                        <td className="px-3 py-3 text-slate-600">{formatPeriodeIntervention(intervention)}</td>
                         <td className="px-3 py-3">
                           <p className="font-medium text-slate-900">{intervention.titre}</p>
                           {intervention.description && <p className="line-clamp-1 text-xs text-slate-500">{intervention.description}</p>}
@@ -295,7 +268,7 @@ function DetailHistorique({ intervention, onClose }: { intervention: Interventio
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white p-4">
           <div>
             <h2 className="font-semibold text-slate-950">{intervention.titre}</h2>
-            <p className="text-sm text-slate-500">{intervention.lieu ? nomLieu(intervention.lieu) : 'Lieu inconnu'} - {formatDate(intervention.date_intervention)}</p>
+            <p className="text-sm text-slate-500">{intervention.lieu ? nomLieu(intervention.lieu) : 'Lieu inconnu'} - {formatPeriodeIntervention(intervention)}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-2 text-slate-500 hover:bg-slate-100">
             <X className="h-5 w-5" />
@@ -309,6 +282,7 @@ function DetailHistorique({ intervention, onClose }: { intervention: Interventio
             <Info label="Executant" value={intervention.executant?.nom || '-'} />
             <Info label="Priorite" value={intervention.priorite} />
             <Info label="Etat" value={libelleEtat(intervention.etat?.nom)} />
+            <Info label="Periode" value={formatPeriodeIntervention(intervention)} />
             {intervention.description && <Info label="Description" value={intervention.description} />}
             {intervention.travail_a_faire && <Info label="Travail a faire" value={intervention.travail_a_faire} />}
             <Info label="Date fermeture" value={intervention.date_fermeture ? formatDateHeure(intervention.date_fermeture) : '-'} />
@@ -366,24 +340,6 @@ function DetailHistorique({ intervention, onClose }: { intervention: Interventio
             </section>
           </div>
         </div>
-      </div>
-    </div>
-  )
-}
-
-function StatCard({ label, value, icon: Icon, tone = 'slate' }: { label: string; value: number; icon: typeof Wrench; tone?: 'slate' | 'red' | 'orange' }) {
-  const toneClass = tone === 'red' ? 'bg-rose-50 text-rose-700' : tone === 'orange' ? 'bg-amber-50 text-amber-700' : 'bg-teal-50 text-teal-700'
-
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-slate-950">{value}</p>
-        </div>
-        <span className={`flex h-10 w-10 items-center justify-center rounded-md ${toneClass}`}>
-          <Icon className="h-5 w-5" />
-        </span>
       </div>
     </div>
   )
@@ -457,6 +413,19 @@ function formatDate(date: string) {
 
 function formatDateHeure(date: string) {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(date))
+}
+
+function formatPeriodeIntervention(intervention: InterventionMaintenance) {
+  const debut = `${formatDate(intervention.date_intervention)}${intervention.heure_debut ? ` ${formatHeure(intervention.heure_debut)}` : ''}`
+  const dateFin = intervention.date_fin || intervention.date_intervention
+  const fin = `${formatDate(dateFin)}${intervention.heure_fin ? ` ${formatHeure(intervention.heure_fin)}` : ''}`
+
+  if (dateFin === intervention.date_intervention && !intervention.heure_fin) return debut
+  return `${debut} -> ${fin}`
+}
+
+function formatHeure(heure: string) {
+  return heure.slice(0, 5)
 }
 
 const inputClass = 'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100'

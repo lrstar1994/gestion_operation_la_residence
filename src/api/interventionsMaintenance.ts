@@ -36,6 +36,9 @@ export type InterventionMaintenance = {
   travail_a_faire: string | null
   id_lieu: string
   date_intervention: string
+  heure_debut: string | null
+  date_fin: string | null
+  heure_fin: string | null
   priorite: PrioriteIntervention
   id_executant: string | null
   id_etat: string
@@ -57,6 +60,9 @@ export type InterventionPayload = {
   travail_a_faire: string | null
   id_lieu: string
   date_intervention: string
+  heure_debut: string | null
+  date_fin: string | null
+  heure_fin: string | null
   priorite: PrioriteIntervention
   id_executant: string | null
   id_etat: string
@@ -77,7 +83,7 @@ const bucketInterventions = 'interventions'
 const selectPhoto = 'id,id_intervention,url_storage,nom_fichier,type_photo,commentaire,created_at'
 const selectCommentaire = 'id,id_intervention,id_utilisateur,commentaire,created_at,utilisateur:utilisateurs(id,nom,email)'
 const selectIntervention =
-  `id,titre,description,travail_a_faire,id_lieu,date_intervention,priorite,id_executant,id_etat,commentaire_fermeture,date_fermeture,est_actif,created_at,updated_at,` +
+  `id,titre,description,travail_a_faire,id_lieu,date_intervention,heure_debut,date_fin,heure_fin,priorite,id_executant,id_etat,commentaire_fermeture,date_fermeture,est_actif,created_at,updated_at,` +
   `lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),` +
   `executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),` +
   `etat:etat_mouvement(id,nom),photos:photo_intervention(${selectPhoto}),commentaires:commentaire_intervention(${selectCommentaire})`
