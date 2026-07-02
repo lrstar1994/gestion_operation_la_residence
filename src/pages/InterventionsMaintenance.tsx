@@ -317,6 +317,7 @@ export function InterventionsMaintenance() {
           etats={etats}
           onClose={() => setDetail(null)}
           onUpload={() => setUpload(detail)}
+          onTerminer={() => setFermeture(detail)}
           onChangerEtat={(etat) => void changerEtat(detail, etat)}
           onSupprimerPhoto={(photo) => void supprimerPhoto(photo)}
           onCommenter={(commentaire) => void ajouterCommentaire(detail.id, commentaire)}
@@ -382,11 +383,12 @@ function InterventionRow({ intervention, onVoir, onModifier, onPhotos, onSupprim
   )
 }
 
-function DetailIntervention({ intervention, etats, onClose, onUpload, onChangerEtat, onSupprimerPhoto, onCommenter }: {
+function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer, onChangerEtat, onSupprimerPhoto, onCommenter }: {
   intervention: InterventionMaintenance
   etats: EtatMouvement[]
   onClose: () => void
   onUpload: () => void
+  onTerminer: () => void
   onChangerEtat: (etat: string) => void
   onSupprimerPhoto: (photo: PhotoIntervention) => void
   onCommenter: (commentaire: string) => void
@@ -426,6 +428,10 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onChangerE
               <button type="button" onClick={onUpload} className={primaryButton}>
                 <ImagePlus className="h-4 w-4" />
                 Ajouter photos
+              </button>
+              <button type="button" onClick={onTerminer} className={successButton}>
+                <CheckCircle2 className="h-4 w-4" />
+                Marquer termine
               </button>
             </div>
           )}
@@ -777,6 +783,7 @@ const inputClass = 'h-10 w-full rounded-md border border-slate-300 bg-white px-3
 const textareaClass = 'min-h-24 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100'
 const fileInputClass = 'block w-full rounded-md border border-slate-300 bg-white text-sm file:mr-3 file:border-0 file:bg-teal-700 file:px-3 file:py-2 file:font-semibold file:text-white'
 const primaryButton = 'inline-flex h-10 items-center justify-center gap-2 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60'
+const successButton = 'inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-60'
 const secondaryButton = 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100'
 const iconButton = 'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-300 px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100'
 const dangerButton = 'inline-flex h-9 items-center justify-center rounded-md border border-rose-300 px-2 text-rose-700 hover:bg-rose-50'
