@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight, Save, Search, Users } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Save, Search, SlidersHorizontal, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { listerDomainesExecutants, listerExecutants, type DomaineExecutant, type Executant } from '../api/executants'
 import {
@@ -56,6 +56,7 @@ export function PlanningHebdomadaire() {
   const [filtreDomaine, setFiltreDomaine] = useState<DomaineFiltre>('tous')
   const [recherche, setRecherche] = useState('')
   const [filtreType, setFiltreType] = useState('tous')
+  const [panneauSaisieOuvert, setPanneauSaisieOuvert] = useState(false)
   const { estAdmin, profil } = useAuth()
 
   const semaine = useMemo(() => {
@@ -305,6 +306,16 @@ export function PlanningHebdomadaire() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {!lectureSeule && (
+            <button
+              type="button"
+              onClick={() => setPanneauSaisieOuvert(true)}
+              className="inline-flex h-10 items-center gap-2 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Saisie rapide
+            </button>
+          )}
           <button
             type="button"
             onClick={() => changerSemaine(-1)}
@@ -330,9 +341,9 @@ export function PlanningHebdomadaire() {
         </div>
       </div>
 
-      <div className={!lectureSeule ? 'grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]' : 'grid gap-4'}>
+      <div className="grid gap-4">
         {!lectureSeule && (
-        <aside className="space-y-4">
+        <aside className="hidden">
           {!lectureSeule && (
             <form onSubmit={gererLot} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-4 flex items-center gap-2">
@@ -524,6 +535,82 @@ export function PlanningHebdomadaire() {
           </div>
         </div>
       </div>
+
+      {panneauSaisieOuvert && (
+        <div className="fixed inset-0 z-[60] flex justify-end bg-slate-950/35">
+          <aside className="h-full w-full max-w-md overflow-y-auto bg-white p-5 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-slate-950">Saisie rapide</h2>
+                <p className="text-sm text-slate-500">{executantsSelectionnes.length} executant(s) selectionne(s)</p>
+              </div>
+              <button type="button" onClick={() => setPanneauSaisieOuvert(false)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={gererLot} className="space-y-4">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={executantsSelectionnables.length > 0 && executantsSelectionnables.every((executant) => executantsSelectionnes.includes(executant.id))}
+                  onChange={(event) => selectionnerTousVisibles(event.target.checked)}
+                  disabled={executantsSelectionnables.length === 0}
+                  className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600 disabled:opacity-50"
+                />
+                Selectionner les visibles
+              </label>
+
+              <div className="max-h-80 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                {executantsSelectionnables.map((executant) => (
+                  <label key={executant.id} className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={executantsSelectionnes.includes(executant.id)}
+                      onChange={(event) => basculerSelection(executant.id, event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                    />
+                    <span className="truncate">{executant.nom}</span>
+                  </label>
+                ))}
+                {executantsSelectionnables.length === 0 && <p className="px-2 py-3 text-sm text-slate-500">Aucun executant.</p>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <ChampDate label="Debut" value={dateDebutLot} onChange={setDateDebutLot} disabled={false} />
+                <ChampDate label="Fin" value={dateFinLot} onChange={setDateFinLot} disabled={false} />
+              </div>
+
+              <PlanningFields
+                types={typesPlanning}
+                formulaire={formulaireLot}
+                setFormulaire={setFormulaireLot}
+                typeSelectionne={typeSelectionneLot}
+                disabled={false}
+              />
+
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={remplacerExistants}
+                  onChange={(event) => setRemplacerExistants(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                />
+                Remplacer les plannings existants
+              </label>
+
+              <button
+                type="submit"
+                disabled={soumissionLot}
+                className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Save className="h-4 w-4" />
+                {soumissionLot ? 'Application...' : 'Appliquer'}
+              </button>
+            </form>
+          </aside>
+        </div>
+      )}
 
       {modal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 px-4 py-6">
