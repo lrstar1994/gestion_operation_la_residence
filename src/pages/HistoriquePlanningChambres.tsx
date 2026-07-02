@@ -76,8 +76,57 @@ export function HistoriquePlanningChambres() {
           .toLowerCase()
           .includes(terme)
       })
-      .sort((a, b) => b.date.localeCompare(a.date) || (a.lieu?.nom || '').localeCompare(b.lieu?.nom || ''))
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.lieu?.nom || '').localeCompare(b.lieu?.nom || ''))
   }, [batimentFiltre, chambreFiltre, executantFiltre, planning, recherche, typeFiltre])
+
+  const datesVisibles = useMemo(() => {
+    const aujourdHui = formatDateInput(new Date())
+    return datesEntre(dateDebut, dateFin).filter((date) => date < aujourdHui)
+  }, [dateDebut, dateFin])
+
+  const mouvementsParCellule = useMemo(() => {
+    const map = new Map<string, PlanningChambre[]>()
+    mouvementsFiltres.forEach((mouvement) => {
+      const cle = `${mouvement.id_lieu}-${mouvement.date}`
+      const mouvements = map.get(cle) || []
+      mouvements.push(mouvement)
+      map.set(cle, mouvements)
+    })
+    return map
+  }, [mouvementsFiltres])
+
+  const chambresAffichees = useMemo(() => {
+    const idsAvecMouvement = new Set(mouvementsFiltres.map((mouvement) => mouvement.id_lieu))
+    const terme = recherche.trim().toLowerCase()
+
+    return chambres
+      .filter((chambre) => idsAvecMouvement.has(chambre.id))
+      .filter((chambre) => chambreFiltre === 'tous' || chambre.id === chambreFiltre)
+      .filter((chambre) => batimentFiltre === 'tous' || chambre.id_batiment === batimentFiltre)
+      .filter((chambre) => {
+        if (!terme) return true
+        return [chambre.nom, chambre.numero, chambre.batiment?.nom]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(terme)
+      })
+      .sort((a, b) => (a.batiment?.nom || '').localeCompare(b.batiment?.nom || '') || (a.numero || a.nom).localeCompare(b.numero || b.nom))
+  }, [batimentFiltre, chambreFiltre, chambres, mouvementsFiltres, recherche])
+
+  const chambresParBatiment = useMemo(() => {
+    return chambresAffichees.reduce<Array<{ id: string; nom: string; chambres: Lieu[] }>>((groupes, chambre) => {
+      const id = chambre.id_batiment || 'sans-batiment'
+      const nom = chambre.batiment?.nom || 'Sans batiment'
+      const groupe = groupes.find((item) => item.id === id)
+      if (groupe) {
+        groupe.chambres.push(chambre)
+      } else {
+        groupes.push({ id, nom, chambres: [chambre] })
+      }
+      return groupes
+    }, [])
+  }, [chambresAffichees])
 
   return (
     <section className="space-y-5">
@@ -137,34 +186,71 @@ export function HistoriquePlanningChambres() {
             </div>
           )}
 
-          {!chargement && mouvementsFiltres.length > 0 && (
+          {!chargement && chambresAffichees.length > 0 && datesVisibles.length > 0 && (
             <div className="overflow-x-auto">
-              <table className="min-w-[860px] w-full text-sm">
-                <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Chambre</th>
-                    <th className="px-4 py-3">Batiment</th>
-                    <th className="px-4 py-3">Mouvement</th>
-                    <th className="px-4 py-3">Executant</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {mouvementsFiltres.map((mouvement) => (
-                    <tr key={mouvement.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-slate-700">{formatDate(mouvement.date)}</td>
-                      <td className="px-4 py-3 font-medium text-slate-900">{mouvement.lieu?.nom || 'Chambre'}</td>
-                      <td className="px-4 py-3 text-slate-600">{mouvement.lieu?.batiment?.nom || '-'}</td>
-                      <td className="px-4 py-3"><Badge tone={couleurMouvement(mouvement.type_mouvement?.nom)}>{mouvement.type_mouvement?.nom || '-'}</Badge></td>
-                      <td className="px-4 py-3 text-slate-700">{mouvement.executant?.nom || 'Non affecte'}</td>
-                    </tr>
+              <div className="min-w-[980px]">
+                <div
+                  className="grid border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-500"
+                  style={{ gridTemplateColumns: `190px repeat(${datesVisibles.length}, minmax(132px, 1fr))` }}
+                >
+                  <div className="sticky left-0 z-10 border-r border-slate-200 bg-slate-50 px-4 py-3">Chambre</div>
+                  {datesVisibles.map((date) => (
+                    <div key={date} className="border-r border-slate-200 px-3 py-3 text-center last:border-r-0">
+                      <div>{jourSemaine(date)}</div>
+                      <div className="mt-1 font-bold text-slate-800">{formatDate(date)}</div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+
+                {chambresParBatiment.map((groupe) => (
+                  <div key={groupe.id}>
+                    <div
+                      className="grid border-b border-slate-200 bg-slate-100 text-xs font-bold uppercase text-slate-700"
+                      style={{ gridTemplateColumns: `190px repeat(${datesVisibles.length}, minmax(132px, 1fr))` }}
+                    >
+                      <div className="sticky left-0 z-10 border-r border-slate-200 bg-slate-100 px-4 py-2">{groupe.nom}</div>
+                      <div className="col-span-full hidden" />
+                    </div>
+
+                    {groupe.chambres.map((chambre) => (
+                      <div
+                        key={chambre.id}
+                        className="grid min-h-[78px] border-b border-slate-100 last:border-b-0"
+                        style={{ gridTemplateColumns: `190px repeat(${datesVisibles.length}, minmax(132px, 1fr))` }}
+                      >
+                        <div className="sticky left-0 z-10 flex flex-col justify-center border-r border-slate-200 bg-white px-4 py-3">
+                          <span className="font-semibold text-slate-900">{chambre.nom}</span>
+                          <span className="text-xs text-slate-500">{chambre.batiment?.nom || '-'}</span>
+                        </div>
+
+                        {datesVisibles.map((date) => {
+                          const mouvements = mouvementsParCellule.get(`${chambre.id}-${date}`) || []
+                          return (
+                            <div key={`${chambre.id}-${date}`} className="border-r border-slate-100 bg-white p-2 last:border-r-0">
+                              {mouvements.length === 0 ? (
+                                <div className="flex h-full min-h-[58px] items-center justify-center rounded-md bg-slate-50 text-xs text-slate-300">-</div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {mouvements.map((mouvement) => (
+                                    <div key={mouvement.id} className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
+                                      <Badge tone={couleurMouvement(mouvement.type_mouvement?.nom)}>{mouvement.type_mouvement?.nom || '-'}</Badge>
+                                      <p className="mt-2 truncate text-xs font-medium text-slate-700">{mouvement.executant?.nom || 'Non affecte'}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          {!chargement && mouvementsFiltres.length === 0 && (
+          {!chargement && (chambresAffichees.length === 0 || datesVisibles.length === 0) && (
             <div className="p-8 text-center text-sm text-slate-500">
               Aucun mouvement passe trouve.
             </div>
@@ -209,6 +295,23 @@ function ajouterJours(date: string, jours: number) {
   const valeur = new Date(`${date}T00:00:00`)
   valeur.setDate(valeur.getDate() + jours)
   return formatDateInput(valeur)
+}
+
+function datesEntre(debut: string, fin: string) {
+  const dates: string[] = []
+  const courant = new Date(`${debut}T00:00:00`)
+  const limite = new Date(`${fin}T00:00:00`)
+
+  while (courant <= limite) {
+    dates.push(formatDateInput(courant))
+    courant.setDate(courant.getDate() + 1)
+  }
+
+  return dates
+}
+
+function jourSemaine(date: string) {
+  return new Intl.DateTimeFormat('fr-FR', { weekday: 'short' }).format(new Date(`${date}T00:00:00`))
 }
 
 function formatDate(date: string) {
