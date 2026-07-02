@@ -196,6 +196,11 @@ export function InterventionsMaintenance() {
       return
     }
 
+    if (!intervention.date_fin || !intervention.heure_fin) {
+      toast.error("La date fin et l'heure fin sont obligatoires pour fermer.")
+      return
+    }
+
     try {
       interventionMaj(await modifierInterventionMaintenance(intervention.id, {
         id_etat: etatTermine.id,
@@ -646,9 +651,13 @@ function FermetureModal({ intervention, onClose, onSubmit }: {
   const compte = compterPhotosParType(intervention.photos)
   const [commentaire, setCommentaire] = useState('')
   const [soumission, setSoumission] = useState(false)
-  const peutFermer = compte.avant > 0 && compte.apres > 0
+  const dateFinPresente = Boolean(intervention.date_fin)
+  const heureFinPresente = Boolean(intervention.heure_fin)
+  const peutFermer = compte.avant > 0 && compte.apres > 0 && dateFinPresente && heureFinPresente
 
   async function fermer() {
+    if (!peutFermer) return
+
     setSoumission(true)
     try {
       await onSubmit(intervention, commentaire)
@@ -662,7 +671,9 @@ function FermetureModal({ intervention, onClose, onSubmit }: {
       <div className="space-y-4">
         <VerificationPhoto ok={compte.avant > 0} texte={`Photo avant presente (${compte.avant})`} />
         <VerificationPhoto ok={compte.apres > 0} texte={`Photo apres presente (${compte.apres})`} />
-        {!peutFermer && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Ajoute au moins une photo avant et une photo apres avant fermeture.</p>}
+        <VerificationPhoto ok={dateFinPresente} texte={`Date fin ${dateFinPresente ? formatDate(intervention.date_fin!) : 'manquante'}`} />
+        <VerificationPhoto ok={heureFinPresente} texte={`Heure fin ${heureFinPresente ? formatHeure(intervention.heure_fin!) : 'manquante'}`} />
+        {!peutFermer && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Ajoute les photos avant/apres, la date fin et l'heure fin avant fermeture.</p>}
         <Champ label="Commentaire de fermeture"><textarea value={commentaire} onChange={(event) => setCommentaire(event.target.value)} className={textareaClass} /></Champ>
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className={secondaryButton}>Annuler</button>

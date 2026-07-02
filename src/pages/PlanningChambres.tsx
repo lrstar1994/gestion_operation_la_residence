@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, BedDouble, CalendarDays, ChevronLeft, ChevronRight, Save, Search, Trash2 } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { AlertTriangle, BedDouble, CalendarDays, ChevronLeft, ChevronRight, Maximize2, Minimize2, Save, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Lieu } from '../api/lieux'
 import type { ChargeExecutant, PlanningChambre, PlanningChambrePayload } from '../api/planningChambre'
@@ -37,6 +37,8 @@ export function PlanningChambres() {
   const [soumission, setSoumission] = useState(false)
   const [pagePlanning, setPagePlanning] = useState(1)
   const [lignesParPage, setLignesParPage] = useState(15)
+  const [panneauSaisieOuvert, setPanneauSaisieOuvert] = useState(false)
+  const [modeGrandAngle, setModeGrandAngle] = useState(false)
   const { estAdmin, peutAccederAuDomaine } = useAuth()
 
   const aujourdHui = formatDateInput(new Date())
@@ -116,6 +118,20 @@ export function PlanningChambres() {
     const debut = (pagePlanning - 1) * lignesParPage
     return chambresFiltrees.slice(debut, debut + lignesParPage)
   }, [chambresFiltrees, lignesParPage, pagePlanning])
+  const chambresPageParBatiment = useMemo(() => {
+    const map = new Map<string, { id: string; nom: string; chambres: Lieu[] }>()
+
+    chambresPage.forEach((chambre) => {
+      const id = chambre.id_batiment || 'sans-batiment'
+      const nom = chambre.batiment?.nom || 'Sans batiment'
+      const groupe = map.get(id) || { id, nom, chambres: [] }
+
+      groupe.chambres.push(chambre)
+      map.set(id, groupe)
+    })
+
+    return Array.from(map.values()).sort((a, b) => a.nom.localeCompare(b.nom))
+  }, [chambresPage])
 
   useEffect(() => {
     setPagePlanning(1)
@@ -346,20 +362,30 @@ export function PlanningChambres() {
   }
 
   return (
-    <section className="space-y-5">
+    <section className={modeGrandAngle ? 'fixed inset-0 z-[70] overflow-auto bg-slate-50 p-4' : 'space-y-5'}>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-950 sm:text-2xl">Planning des chambres</h1>
           <p className="mt-1 text-sm text-slate-500">Mouvements, points et detection de surcharge.</p>
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">
-          <CalendarDays className="h-4 w-4 text-teal-700" />
-          A partir du {formatDateCourte(aujourdHui)}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setPanneauSaisieOuvert(true)} className="inline-flex h-10 items-center gap-2 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800">
+            <SlidersHorizontal className="h-4 w-4" />
+            Saisie rapide
+          </button>
+          <button type="button" onClick={() => setModeGrandAngle((actif) => !actif)} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+            {modeGrandAngle ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {modeGrandAngle ? 'Quitter grand angle' : 'Grand angle'}
+          </button>
+          <div className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-600">
+            <CalendarDays className="h-4 w-4 text-teal-700" />
+            A partir du {formatDateCourte(aujourdHui)}
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <aside className="space-y-4">
+      <div className="space-y-4">
+        <aside className="hidden">
           <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-4 flex items-center gap-2">
               <BedDouble className="h-4 w-4 text-teal-700" />
@@ -515,23 +541,32 @@ export function PlanningChambres() {
                       <td colSpan={1} className="px-4 py-8 text-center text-slate-500">Aucun planning a venir.</td>
                     </tr>
                   )}
-                  {!chargement && datesVisibles.length > 0 && chambresPage.map((chambre) => (
-                    <tr key={chambre.id} className="border-b border-slate-100">
-                      <th className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-3 text-left align-top">
-                        <span className="block font-semibold text-slate-900">{chambre.nom}</span>
-                        <span className="text-xs font-normal text-slate-500">{chambre.batiment?.nom}</span>
-                      </th>
-                      {datesVisibles.map((date) => {
-                        const mouvements = planningParCellule.get(`${chambre.id}-${date}`) || []
-                        return (
-                          <td key={date} className="min-w-32 border-r border-slate-100 p-2 align-top">
-                            <button type="button" onClick={() => ouvrirModal(chambre, date)} className="min-h-20 w-full rounded-md border border-transparent p-2 text-left hover:border-teal-200 hover:bg-teal-50">
-                              {mouvements.length === 0 ? <span className="text-slate-300">-</span> : <CellMouvements mouvements={mouvements} />}
-                            </button>
-                          </td>
-                        )
-                      })}
-                    </tr>
+                  {!chargement && datesVisibles.length > 0 && chambresPageParBatiment.map((groupe) => (
+                    <Fragment key={groupe.id}>
+                      <tr className="border-b border-slate-200 bg-slate-100">
+                        <td colSpan={datesVisibles.length + 1} className="sticky left-0 px-3 py-2 text-xs font-bold uppercase text-slate-600">
+                          {groupe.nom} - {groupe.chambres.length} chambre(s)
+                        </td>
+                      </tr>
+                      {groupe.chambres.map((chambre) => (
+                        <tr key={chambre.id} className="border-b border-slate-100">
+                          <th className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-3 text-left align-top">
+                            <span className="block font-semibold text-slate-900">{chambre.nom}</span>
+                            <span className="text-xs font-normal text-slate-500">{chambre.batiment?.nom}</span>
+                          </th>
+                          {datesVisibles.map((date) => {
+                            const mouvements = planningParCellule.get(`${chambre.id}-${date}`) || []
+                            return (
+                              <td key={date} className="min-w-36 border-r border-slate-100 p-2 align-top">
+                                <button type="button" onClick={() => ouvrirModal(chambre, date)} className="min-h-20 w-full rounded-md border border-transparent p-2 text-left hover:border-teal-200 hover:bg-teal-50">
+                                  {mouvements.length === 0 ? <span className="text-slate-300">-</span> : <CellMouvements mouvements={mouvements} />}
+                                </button>
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))}
                   {!chargement && chambresFiltrees.length === 0 && (
                     <tr>
@@ -570,6 +605,133 @@ export function PlanningChambres() {
           </div>
         </main>
       </div>
+
+      {panneauSaisieOuvert && (
+        <div className="fixed inset-0 z-[60] flex justify-end bg-slate-950/35">
+          <aside className="h-full w-full max-w-md overflow-y-auto bg-white p-5 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-slate-950">Saisie rapide</h2>
+                <p className="text-sm text-slate-500">{chambresSelectionnees.length} chambre(s) selectionnee(s)</p>
+              </div>
+              <button type="button" onClick={() => setPanneauSaisieOuvert(false)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={gererLot} className="space-y-4">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Date</span>
+                <input type="date" value={dateLot} onChange={(event) => setDateLot(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Mouvement</span>
+                <select value={typeLot} onChange={(event) => setTypeLot(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
+                  <option value="">Choisir</option>
+                  {typesMouvement.map((type) => <option key={type.id} value={type.id}>{type.nom} ({type.points} pts)</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Executant</span>
+                <select value={executantLot} onChange={(event) => setExecutantLot(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
+                  <option value="">Defaut du batiment si en travail</option>
+                  {executantsLotDisponibles.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
+                </select>
+                {executantsLotDisponibles.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun executant en travail pour cette date.</p>}
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input type="checkbox" checked={remplacer} onChange={(event) => setRemplacer(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600" />
+                Remplacer les mouvements existants
+              </label>
+
+              <div className="rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between border-b border-slate-200 p-3">
+                  <span className="text-sm font-semibold text-slate-900">Chambres visibles</span>
+                  <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                    <input type="checkbox" checked={chambresFiltrees.length > 0 && chambresFiltrees.every((chambre) => chambresSelectionnees.includes(chambre.id))} onChange={(event) => selectionnerToutes(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600" />
+                    Tout
+                  </label>
+                </div>
+                <div className="max-h-80 space-y-1 overflow-y-auto p-2">
+                  {chambresFiltrees.map((chambre) => (
+                    <label key={chambre.id} className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-slate-50">
+                      <input type="checkbox" checked={chambresSelectionnees.includes(chambre.id)} onChange={(event) => basculerChambre(chambre.id, event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600" />
+                      <span className="min-w-0 truncate">{chambre.nom} {chambre.batiment ? `(${chambre.batiment.nom})` : ''}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <button type="submit" disabled={!peutModifier || soumission} className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60">
+                <Save className="h-4 w-4" />
+                Appliquer
+              </button>
+            </form>
+          </aside>
+        </div>
+      )}
+
+      {propositionsEnAttente && (
+        <div className="fixed inset-y-0 right-0 z-[65] flex w-full max-w-lg flex-col border-l border-amber-200 bg-amber-50 shadow-xl">
+          <div className="flex items-start justify-between gap-3 border-b border-amber-200 p-4">
+            <div>
+              <h2 className="flex items-center gap-2 font-semibold text-amber-950">
+                <AlertTriangle className="h-4 w-4" />
+                Reequilibrage des affectations
+              </h2>
+              <p className="mt-1 text-sm text-amber-900">Choisissez un autre executant. Une seule selection suffit pour valider.</p>
+            </div>
+            <button type="button" onClick={() => { setSuggestions([]); setPayloadsEnAttente([]); setReaffectationsEnAttente([]) }} className="rounded-md p-2 text-amber-800 hover:bg-amber-100">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            {suggestions.map((suggestion) => {
+              const libelle = libellePayload(suggestion.payload)
+
+              return (
+                <div key={`${suggestion.payload.id_lieu}-${suggestion.payload.date}-${suggestion.payload.id_type_mouvement}`} className="rounded-lg bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-slate-950">{libelle.chambre}</p>
+                      <p className="text-sm text-slate-600">{libelle.type} - {libelle.date}</p>
+                    </div>
+                    <span className="rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">Actuel : {nomExecutant(suggestion.payload.id_executant)}</span>
+                  </div>
+                  {suggestion.chargeActuelle && (
+                    <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                      {suggestion.chargeActuelle.executant.nom} est en surcharge.
+                    </p>
+                  )}
+                  <div className="mt-3 grid gap-2">
+                    {suggestion.suggestions.length === 0 && <span className="rounded-md bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">Aucun executant disponible.</span>}
+                    {suggestion.suggestions.map((charge) => (
+                      <button key={charge.executant.id} type="button" onClick={() => appliquerSuggestion(suggestion.payload, charge.executant.id)} className="flex items-center justify-between gap-3 rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-left text-sm font-semibold text-teal-800 hover:bg-teal-100">
+                        <span>{charge.executant.nom}</span>
+                        <span>{charge.points + pointsPayload(suggestion.payload)}/{charge.capaciteMax || 'infini'} pts apres</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+            {suggestions.length === 0 && payloadsProposition.map((payload) => {
+              const libelle = libellePayload(payload)
+              return (
+                <div key={`${payload.id_lieu}-${payload.date}-${payload.id_type_mouvement}`} className="rounded-lg bg-white p-4 shadow-sm">
+                  <p className="font-semibold text-slate-950">{libelle.chambre}</p>
+                  <p className="text-sm text-slate-600">{libelle.type} - {libelle.date}</p>
+                  <p className="mt-2 text-xs font-semibold text-teal-700">Pret avec {nomExecutant(payload.id_executant)}</p>
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex gap-2 border-t border-amber-200 p-4">
+            <button type="button" onClick={() => void validerPropositions()} disabled={soumission || !peutValiderPropositions} className="flex-1 rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">Valider les affectations</button>
+            <button type="button" onClick={() => { setSuggestions([]); setPayloadsEnAttente([]); setReaffectationsEnAttente([]) }} className="rounded-md border border-amber-300 px-3 py-2 text-sm font-semibold text-amber-800">Refuser</button>
+          </div>
+        </div>
+      )}
 
       {modal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 px-4 py-6">
@@ -615,13 +777,23 @@ function CellMouvements({ mouvements }: { mouvements: PlanningChambre[] }) {
   return (
     <div className="space-y-1">
       {mouvements.map((mouvement) => (
-        <div key={mouvement.id} className="rounded-md bg-teal-50 px-2 py-1">
-          <p className="text-xs font-semibold text-teal-800">{mouvement.type_mouvement?.nom} ({mouvement.type_mouvement?.points} pts)</p>
+        <div key={mouvement.id} className={`rounded-md px-2 py-1 ring-1 ${couleurMouvement(mouvement.type_mouvement?.nom)}`}>
+          <p className="text-xs font-semibold">{mouvement.type_mouvement?.nom} ({mouvement.type_mouvement?.points} pts)</p>
           <p className="truncate text-xs text-slate-500">{mouvement.executant?.nom || 'Non affecte'}</p>
         </div>
       ))}
     </div>
   )
+}
+
+function couleurMouvement(type?: string) {
+  const nom = type?.toUpperCase() || ''
+
+  if (nom.includes('DEPART')) return 'bg-rose-50 text-rose-800 ring-rose-100'
+  if (nom.includes('RECOUCHE')) return 'bg-sky-50 text-sky-800 ring-sky-100'
+  if (nom.includes('ARRIVEE')) return 'bg-emerald-50 text-emerald-800 ring-emerald-100'
+  if (nom.includes('MENAGE')) return 'bg-teal-50 text-teal-800 ring-teal-100'
+  return 'bg-slate-100 text-slate-700 ring-slate-200'
 }
 
 function ChargeExecutants({
