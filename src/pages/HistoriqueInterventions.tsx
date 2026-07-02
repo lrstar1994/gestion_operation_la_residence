@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Camera, Eye, Loader2, RefreshCcw, Search, Trash2, X } from 'lucide-react'
+import { Camera, Eye, Loader2, RefreshCcw, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   compterPhotosParType,
   listerInterventionsMaintenance,
-  supprimerInterventionMaintenance,
   urlPubliquePhoto,
   type InterventionMaintenance,
   type PrioriteIntervention,
@@ -26,7 +25,6 @@ export function HistoriqueInterventions() {
   const [interventions, setInterventions] = useState<InterventionMaintenance[]>([])
   const [lieux, setLieux] = useState<Lieu[]>([])
   const [chargement, setChargement] = useState(true)
-  const [actionEnCours, setActionEnCours] = useState<string | null>(null)
   const [recherche, setRecherche] = useState('')
   const [lieuFiltre, setLieuFiltre] = useState('tous')
   const [prioriteFiltre, setPrioriteFiltre] = useState<PrioriteIntervention | 'tous'>('tous')
@@ -103,28 +101,6 @@ export function HistoriqueInterventions() {
       }))
       .sort((a, b) => a.titre.localeCompare(b.titre))
   }, [interventionsFiltrees])
-
-  async function supprimerHistorique(intervention: InterventionMaintenance) {
-    if (!estAdmin()) {
-      toast.error('Seul un admin peut supprimer un historique.')
-      return
-    }
-
-    const confirmation = window.confirm(`Supprimer definitivement l'historique "${intervention.titre}" ? Les photos et commentaires seront aussi supprimes.`)
-    if (!confirmation) return
-
-    setActionEnCours(intervention.id)
-    try {
-      await supprimerInterventionMaintenance(intervention.id)
-      setInterventions((liste) => liste.filter((item) => item.id !== intervention.id))
-      setDetail((selection) => selection?.id === intervention.id ? null : selection)
-      toast.success('Historique supprime.')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Suppression impossible.')
-    } finally {
-      setActionEnCours(null)
-    }
-  }
 
   if (!estAdmin()) {
     return (
@@ -227,15 +203,6 @@ export function HistoriqueInterventions() {
                             <button type="button" onClick={() => setDetail(intervention)} className={iconButton} title="Voir le detail">
                               <Eye className="h-4 w-4" />
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => void supprimerHistorique(intervention)}
-                              disabled={actionEnCours === intervention.id}
-                              className={dangerButton}
-                              title="Supprimer l'historique"
-                            >
-                              {actionEnCours === intervention.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                            </button>
                           </div>
                         </td>
                       </tr>
@@ -282,11 +249,12 @@ function DetailHistorique({ intervention, onClose }: { intervention: Interventio
             <Info label="Executant" value={intervention.executant?.nom || '-'} />
             <Info label="Priorite" value={intervention.priorite} />
             <Info label="Etat" value={libelleEtat(intervention.etat?.nom)} />
-            <Info label="Periode" value={formatPeriodeIntervention(intervention)} />
+            <Info label="Date debut" value={formatDate(intervention.date_intervention)} />
+            <Info label="Heure debut" value={formatHeureOuTiret(intervention.heure_debut)} />
+            <Info label="Date fin" value={formatDate(intervention.date_fin || intervention.date_intervention)} />
+            <Info label="Heure fin" value={formatHeureOuTiret(intervention.heure_fin)} />
             {intervention.description && <Info label="Description" value={intervention.description} />}
             {intervention.travail_a_faire && <Info label="Travail a faire" value={intervention.travail_a_faire} />}
-            <Info label="Date fermeture" value={intervention.date_fermeture ? formatDateHeure(intervention.date_fermeture) : '-'} />
-            {intervention.commentaire_fermeture && <Info label="Commentaire fermeture" value={intervention.commentaire_fermeture} />}
             <div className="grid grid-cols-2 gap-2 pt-2">
               <PhotoCount label="Avant" value={compte.avant} />
               <PhotoCount label="Apres" value={compte.apres} />
@@ -428,6 +396,9 @@ function formatHeure(heure: string) {
   return heure.slice(0, 5)
 }
 
+function formatHeureOuTiret(heure: string | null | undefined) {
+  return heure ? formatHeure(heure) : '-'
+}
+
 const inputClass = 'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100'
 const iconButton = 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100'
-const dangerButton = 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-60'

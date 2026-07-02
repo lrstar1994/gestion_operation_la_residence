@@ -406,13 +406,15 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onChangerE
       <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
           <Info label="Lieu" value={nomLieu(intervention.lieu)} />
-          <Info label="Periode" value={formatPeriodeIntervention(intervention)} />
+          <Info label="Date debut" value={formatDate(intervention.date_intervention)} />
+          <Info label="Heure debut" value={formatHeureOuTiret(intervention.heure_debut)} />
+          <Info label="Date fin" value={formatDate(intervention.date_fin || intervention.date_intervention)} />
+          <Info label="Heure fin" value={formatHeureOuTiret(intervention.heure_fin)} />
           <Info label="Priorite" value={libellePriorite(intervention.priorite)} />
           <Info label="Etat" value={libelleEtat(intervention.etat?.nom)} />
           <Info label="Executant" value={intervention.executant?.nom || 'Non attribue'} />
           {intervention.description && <Info label="Description" value={intervention.description} />}
           {intervention.travail_a_faire && <Info label="Travail a faire" value={intervention.travail_a_faire} />}
-          {intervention.commentaire_fermeture && <Info label="Fermeture" value={intervention.commentaire_fermeture} />}
 
           {!ferme && (
             <div className="space-y-2">
@@ -758,6 +760,10 @@ function formatPeriodeIntervention(intervention: InterventionMaintenance) {
 
 function formatHeure(heure: string) {
   return heure.slice(0, 5)
+}
+
+function formatHeureOuTiret(heure: string | null | undefined) {
+  return heure ? formatHeure(heure) : '-'
 }
 
 function formatDateInput(date: Date) {
