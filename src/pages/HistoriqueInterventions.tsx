@@ -254,7 +254,7 @@ function DetailHistorique({ intervention, onClose }: { intervention: Interventio
             <Info label="Date fin" value={formatDate(intervention.date_fin || intervention.date_intervention)} />
             <Info label="Heure fin" value={formatHeureOuTiret(intervention.heure_fin)} />
             {intervention.description && <Info label="Description" value={intervention.description} />}
-            {intervention.travail_a_faire && <Info label="Travail a faire" value={intervention.travail_a_faire} />}
+            <Info label="Travail a faire" value={intervention.travail_a_faire || 'Non renseigne'} />
             <div className="grid grid-cols-2 gap-2 pt-2">
               <PhotoCount label="Avant" value={compte.avant} />
               <PhotoCount label="Apres" value={compte.apres} />

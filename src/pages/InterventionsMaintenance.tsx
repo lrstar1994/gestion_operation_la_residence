@@ -421,7 +421,7 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer
           <Info label="Etat" value={libelleEtat(intervention.etat?.nom)} />
           <Info label="Executant" value={intervention.executant?.nom || 'Non attribue'} />
           {intervention.description && <Info label="Description" value={intervention.description} />}
-          {intervention.travail_a_faire && <Info label="Travail a faire" value={intervention.travail_a_faire} />}
+          <Info label="Travail a faire" value={intervention.travail_a_faire || 'Non renseigne'} />
 
           {!ferme && (
             <div className="space-y-2">
