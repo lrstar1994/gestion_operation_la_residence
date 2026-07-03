@@ -22,6 +22,7 @@ import {
   compterPhotosParType,
   creerInterventionMaintenance,
   listerInterventionsMaintenance,
+  listerTypesInterventionMaintenance,
   modifierInterventionMaintenance,
   supprimerInterventionMaintenance,
   supprimerPhotoIntervention,
@@ -31,6 +32,7 @@ import {
   type InterventionPayload,
   type PhotoIntervention,
   type PrioriteIntervention,
+  type TypeInterventionMaintenance,
   type TypePhotoIntervention,
 } from '../api/interventionsMaintenance'
 import { listerLieux, type Lieu } from '../api/lieux'
@@ -38,9 +40,10 @@ import { listerEtatsMouvement, type EtatMouvement } from '../api/planningChambre
 import { useAuth } from '../hooks/useAuth'
 
 type ModeModal = 'creation' | 'edition'
+type OrdreTri = 'recent' | 'ancien'
 
 const priorites: PrioriteIntervention[] = ['basse', 'normale', 'urgente']
-const typesPhoto: TypePhotoIntervention[] = ['avant', 'progression', 'apres', 'anomalie', 'detail']
+const typesPhotoVisibles: TypePhotoIntervention[] = ['avant', 'progression', 'apres']
 const etatsIntervention = ['AFFECTE', 'EN_COURS', 'BLOQUE']
 
 export function InterventionsMaintenance() {
@@ -48,11 +51,14 @@ export function InterventionsMaintenance() {
   const [lieux, setLieux] = useState<Lieu[]>([])
   const [executants, setExecutants] = useState<Executant[]>([])
   const [etats, setEtats] = useState<EtatMouvement[]>([])
+  const [typesIntervention, setTypesIntervention] = useState<TypeInterventionMaintenance[]>([])
   const [chargement, setChargement] = useState(true)
   const [recherche, setRecherche] = useState('')
   const [etatFiltre, setEtatFiltre] = useState('tous')
   const [prioriteFiltre, setPrioriteFiltre] = useState('tous')
   const [lieuFiltre, setLieuFiltre] = useState('tous')
+  const [typeFiltre, setTypeFiltre] = useState('tous')
+  const [ordreTri, setOrdreTri] = useState<OrdreTri>('recent')
   const [modalIntervention, setModalIntervention] = useState<{ mode: ModeModal; intervention?: InterventionMaintenance } | null>(null)
   const [detail, setDetail] = useState<InterventionMaintenance | null>(null)
   const [upload, setUpload] = useState<InterventionMaintenance | null>(null)
@@ -62,17 +68,19 @@ export function InterventionsMaintenance() {
   const charger = useCallback(async () => {
     setChargement(true)
     try {
-      const [interventionsResultat, lieuxResultat, executantsResultat, etatsResultat] = await Promise.all([
+      const [interventionsResultat, lieuxResultat, executantsResultat, etatsResultat, typesInterventionResultat] = await Promise.all([
         listerInterventionsMaintenance(),
         listerLieux(),
         listerExecutants(),
         listerEtatsMouvement(),
+        listerTypesInterventionMaintenance(),
       ])
 
       setInterventions(interventionsResultat)
       setLieux(lieuxResultat)
       setExecutants(executantsResultat.filter((executant) => estMaintenancier(executant)))
       setEtats(etatsResultat)
+      setTypesIntervention(typesInterventionResultat)
       setDetail((selection) => selection ? interventionsResultat.find((item) => item.id === selection.id) || null : null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Interventions impossibles a charger.')
@@ -92,21 +100,25 @@ export function InterventionsMaintenance() {
 
   const interventionsFiltrees = useMemo(() => {
     const terme = recherche.trim().toLowerCase()
-    return interventionsActives.filter((intervention) => {
-      if (etatFiltre !== 'tous' && intervention.etat?.nom !== etatFiltre) return false
-      if (prioriteFiltre !== 'tous' && intervention.priorite !== prioriteFiltre) return false
-      if (lieuFiltre !== 'tous' && intervention.id_lieu !== lieuFiltre) return false
-      if (!terme) return true
+    return interventionsActives
+      .filter((intervention) => {
+        if (etatFiltre !== 'tous' && intervention.etat?.nom !== etatFiltre) return false
+        if (prioriteFiltre !== 'tous' && intervention.priorite !== prioriteFiltre) return false
+        if (lieuFiltre !== 'tous' && intervention.id_lieu !== lieuFiltre) return false
+        if (typeFiltre !== 'tous' && intervention.id_type_intervention !== typeFiltre) return false
+        if (!terme) return true
 
-      return [
-        intervention.titre,
-        intervention.description,
-        intervention.travail_a_faire,
-        intervention.lieu?.nom,
-        intervention.executant?.nom,
-      ].filter(Boolean).join(' ').toLowerCase().includes(terme)
-    })
-  }, [etatFiltre, interventionsActives, lieuFiltre, prioriteFiltre, recherche])
+        return [
+          intervention.titre,
+          intervention.type_intervention?.nom,
+          intervention.description,
+          intervention.travail_a_faire,
+          intervention.lieu?.nom,
+          intervention.executant?.nom,
+        ].filter(Boolean).join(' ').toLowerCase().includes(terme)
+      })
+      .sort((a, b) => comparerInterventionsParDebut(a, b, ordreTri))
+  }, [etatFiltre, interventionsActives, lieuFiltre, ordreTri, prioriteFiltre, recherche, typeFiltre])
 
   function interventionMaj(intervention: InterventionMaintenance) {
     setInterventions((liste) => liste.map((item) => item.id === intervention.id ? intervention : item))
@@ -182,7 +194,7 @@ export function InterventionsMaintenance() {
     }
   }
 
-  async function fermerIntervention(intervention: InterventionMaintenance, commentaire: string) {
+  async function fermerIntervention(intervention: InterventionMaintenance, commentaire: string, dateFin: string, heureFin: string) {
     const etatTermine = etats.find((item) => item.nom === 'TERMINE')
     const compte = compterPhotosParType(intervention.photos)
 
@@ -196,14 +208,26 @@ export function InterventionsMaintenance() {
       return
     }
 
-    if (!intervention.date_fin || !intervention.heure_fin) {
+    if (!dateFin || !heureFin) {
       toast.error("La date fin et l'heure fin sont obligatoires pour fermer.")
+      return
+    }
+
+    if (dateFin < intervention.date_intervention) {
+      toast.error('La date fin doit etre apres la date debut.')
+      return
+    }
+
+    if (dateFin === intervention.date_intervention && intervention.heure_debut && heureFin <= intervention.heure_debut) {
+      toast.error("L'heure fin doit etre apres l'heure debut.")
       return
     }
 
     try {
       interventionMaj(await modifierInterventionMaintenance(intervention.id, {
         id_etat: etatTermine.id,
+        date_fin: dateFin,
+        heure_fin: heureFin,
         commentaire_fermeture: commentaire.trim() || null,
       }))
       toast.success('Intervention fermee.')
@@ -266,7 +290,7 @@ export function InterventionsMaintenance() {
             <Wrench className="h-6 w-6 text-teal-700" />
             Interventions de maintenance
           </h1>
-          <p className="mt-1 text-sm text-slate-500">Suivi, photos avant/apres, commentaires et fermeture controlee.</p>
+          <p className="mt-1 text-sm text-slate-500">Suivi, photos avant/travaux fini, commentaires et fermeture controlee.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setModalIntervention({ mode: 'creation' })} className={primaryButton}>
@@ -281,7 +305,7 @@ export function InterventionsMaintenance() {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="grid gap-2 border-b border-slate-200 p-4 md:grid-cols-[1fr_180px_180px_220px]">
+        <div className="grid gap-2 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-[1fr_160px_160px_190px_190px_170px]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input value={recherche} onChange={(event) => setRecherche(event.target.value)} placeholder="Rechercher..." className={`${inputClass} pl-9`} />
@@ -297,6 +321,14 @@ export function InterventionsMaintenance() {
           <select value={lieuFiltre} onChange={(event) => setLieuFiltre(event.target.value)} className={inputClass}>
             <option value="tous">Tous les lieux</option>
             {lieux.map((lieu) => <option key={lieu.id} value={lieu.id}>{nomLieu(lieu)}</option>)}
+          </select>
+          <select value={typeFiltre} onChange={(event) => setTypeFiltre(event.target.value)} className={inputClass}>
+            <option value="tous">Tous les types</option>
+            {typesIntervention.map((type) => <option key={type.id} value={type.id}>{type.nom}</option>)}
+          </select>
+          <select value={ordreTri} onChange={(event) => setOrdreTri(event.target.value as OrdreTri)} className={inputClass}>
+            <option value="recent">Plus recent</option>
+            <option value="ancien">Plus ancien</option>
           </select>
         </div>
 
@@ -336,6 +368,7 @@ export function InterventionsMaintenance() {
           lieux={lieux}
           executants={executants}
           etats={etats}
+          typesIntervention={typesIntervention}
           onClose={() => setModalIntervention(null)}
           onSubmit={enregistrerIntervention}
         />
@@ -362,6 +395,7 @@ function InterventionRow({ intervention, onVoir, onModifier, onPhotos, onSupprim
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={couleurPriorite(intervention.priorite)}>{libellePriorite(intervention.priorite)}</Badge>
+            <Badge tone="slate">{libelleTypeIntervention(intervention.type_intervention)}</Badge>
             <Badge tone={couleurEtat(intervention.etat?.nom)}>{libelleEtat(intervention.etat?.nom)}</Badge>
             {intervention.date_fermeture && <span className="text-xs text-slate-500">Fermee le {formatDateHeure(intervention.date_fermeture)}</span>}
           </div>
@@ -372,9 +406,7 @@ function InterventionRow({ intervention, onVoir, onModifier, onPhotos, onSupprim
           <p className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
             <span>Avant: {compte.avant}</span>
             <span>Progression: {compte.progression}</span>
-            <span>Apres: {compte.apres}</span>
-            <span>Anomalie: {compte.anomalie}</span>
-            <span>Detail: {compte.detail}</span>
+            <span>Travaux fini: {compte.apres}</span>
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -415,9 +447,10 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer
           <Info label="Lieu" value={nomLieu(intervention.lieu)} />
           <Info label="Date debut" value={formatDate(intervention.date_intervention)} />
           <Info label="Heure debut" value={formatHeureOuTiret(intervention.heure_debut)} />
-          <Info label="Date fin" value={formatDate(intervention.date_fin || intervention.date_intervention)} />
+          <Info label="Date fin" value={formatDateOuTiret(intervention.date_fin)} />
           <Info label="Heure fin" value={formatHeureOuTiret(intervention.heure_fin)} />
           <Info label="Priorite" value={libellePriorite(intervention.priorite)} />
+          <Info label="Type intervention" value={libelleTypeIntervention(intervention.type_intervention)} />
           <Info label="Etat" value={libelleEtat(intervention.etat?.nom)} />
           <Info label="Executant" value={intervention.executant?.nom || 'Non attribue'} />
           {intervention.description && <Info label="Description" value={intervention.description} />}
@@ -444,7 +477,7 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer
 
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            {typesPhoto.map((type) => (
+            {typesPhotoVisibles.map((type) => (
               <button key={type} type="button" onClick={() => setTypeActif(type)} className={typeActif === type ? activeTabClass : tabClass}>
                 {libelleTypePhoto(type)} ({compterPhotosParType(intervention.photos)[type]})
               </button>
@@ -495,18 +528,19 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
   lieux: Lieu[]
   executants: Executant[]
   etats: EtatMouvement[]
+  typesIntervention: TypeInterventionMaintenance[]
   onClose: () => void
   onSubmit: (payload: InterventionPayload, fichiersAvant: File[], mode: ModeModal, id?: string) => Promise<void>
 }) {
   const etatAffecte = etats.find((etat) => etat.nom === 'AFFECTE')
+  const typeDefaut = typesIntervention.find((type) => type.nom === 'Autre') || typesIntervention[0]
   const [titre, setTitre] = useState(intervention?.titre || '')
   const [description, setDescription] = useState(intervention?.description || '')
   const [travailAFaire, setTravailAFaire] = useState(intervention?.travail_a_faire || '')
+  const [idTypeIntervention, setIdTypeIntervention] = useState(intervention?.id_type_intervention || typeDefaut?.id || '')
   const [idLieu, setIdLieu] = useState(intervention?.id_lieu || '')
   const [dateIntervention, setDateIntervention] = useState(intervention?.date_intervention || formatDateInput(new Date()))
   const [heureDebut, setHeureDebut] = useState(intervention?.heure_debut?.slice(0, 5) || '')
-  const [dateFin, setDateFin] = useState(intervention?.date_fin || intervention?.date_intervention || formatDateInput(new Date()))
-  const [heureFin, setHeureFin] = useState(intervention?.heure_fin?.slice(0, 5) || '')
   const [priorite, setPriorite] = useState<PrioriteIntervention>(intervention?.priorite || 'normale')
   const [idExecutant, setIdExecutant] = useState(intervention?.id_executant || '')
   const [fichiersAvant, setFichiersAvant] = useState<File[]>([])
@@ -515,18 +549,8 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
   async function soumettre(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!titre.trim() || !idLieu || !dateIntervention || !etatAffecte) {
-      toast.error('Titre, lieu et date sont obligatoires.')
-      return
-    }
-
-    if (dateFin && dateFin < dateIntervention) {
-      toast.error('La date fin doit etre apres la date debut.')
-      return
-    }
-
-    if (dateFin === dateIntervention && heureDebut && heureFin && heureFin <= heureDebut) {
-      toast.error("L'heure fin doit etre apres l'heure debut.")
+    if (!titre.trim() || !idLieu || !dateIntervention || !etatAffecte || !idTypeIntervention) {
+      toast.error('Titre, type, lieu et date sont obligatoires.')
       return
     }
 
@@ -536,11 +560,12 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
         titre: titre.trim(),
         description: description.trim() || null,
         travail_a_faire: travailAFaire.trim() || null,
+        id_type_intervention: idTypeIntervention,
         id_lieu: idLieu,
         date_intervention: dateIntervention,
         heure_debut: heureDebut || null,
-        date_fin: dateFin || dateIntervention,
-        heure_fin: heureFin || null,
+        date_fin: intervention?.date_fin || null,
+        heure_fin: intervention?.heure_fin || null,
         priorite,
         id_executant: idExecutant || null,
         id_etat: intervention?.id_etat || etatAffecte.id,
@@ -557,6 +582,12 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
     <Modal title={mode === 'creation' ? 'Nouvelle intervention' : 'Modifier intervention'} onClose={onClose}>
       <form onSubmit={soumettre} className="space-y-3">
         <Champ label="Titre"><input value={titre} onChange={(event) => setTitre(event.target.value)} className={inputClass} /></Champ>
+        <Champ label="Type d'intervention">
+          <select value={idTypeIntervention} onChange={(event) => setIdTypeIntervention(event.target.value)} className={inputClass}>
+            <option value="">Choisir</option>
+            {typesIntervention.map((type) => <option key={type.id} value={type.id}>{libelleTypeIntervention(type)}</option>)}
+          </select>
+        </Champ>
         <Champ label="Description"><textarea value={description} onChange={(event) => setDescription(event.target.value)} className={textareaClass} /></Champ>
         <Champ label="Travail a faire"><textarea value={travailAFaire} onChange={(event) => setTravailAFaire(event.target.value)} className={textareaClass} /></Champ>
         <Champ label="Lieu">
@@ -566,13 +597,8 @@ function InterventionModal({ mode, intervention, lieux, executants, etats, onClo
           </select>
         </Champ>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Champ label="Date debut"><input type="date" value={dateIntervention} onChange={(event) => {
-            setDateIntervention(event.target.value)
-            if (!dateFin || dateFin < event.target.value) setDateFin(event.target.value)
-          }} className={inputClass} /></Champ>
+          <Champ label="Date debut"><input type="date" value={dateIntervention} onChange={(event) => setDateIntervention(event.target.value)} className={inputClass} /></Champ>
           <Champ label="Heure debut"><input type="time" value={heureDebut} onChange={(event) => setHeureDebut(event.target.value)} className={inputClass} /></Champ>
-          <Champ label="Date fin"><input type="date" value={dateFin} onChange={(event) => setDateFin(event.target.value)} className={inputClass} /></Champ>
-          <Champ label="Heure fin"><input type="time" value={heureFin} onChange={(event) => setHeureFin(event.target.value)} className={inputClass} /></Champ>
           <Champ label="Priorite"><select value={priorite} onChange={(event) => setPriorite(event.target.value as PrioriteIntervention)} className={inputClass}>{priorites.map((item) => <option key={item} value={item}>{libellePriorite(item)}</option>)}</select></Champ>
         </div>
         <Champ label="Executant">
@@ -620,7 +646,7 @@ function UploadPhotosModal({ intervention, onClose, onSubmit }: {
       <div className="space-y-4">
         <Champ label="Type de photo">
           <select value={typePhoto} onChange={(event) => setTypePhoto(event.target.value as TypePhotoIntervention)} className={inputClass}>
-            {typesPhoto.map((type) => <option key={type} value={type}>{libelleTypePhoto(type)}</option>)}
+            {typesPhotoVisibles.map((type) => <option key={type} value={type}>{libelleTypePhoto(type)}</option>)}
           </select>
         </Champ>
         <label className="block rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center hover:border-teal-500">
@@ -646,13 +672,15 @@ function UploadPhotosModal({ intervention, onClose, onSubmit }: {
 function FermetureModal({ intervention, onClose, onSubmit }: {
   intervention: InterventionMaintenance
   onClose: () => void
-  onSubmit: (intervention: InterventionMaintenance, commentaire: string) => Promise<void>
+  onSubmit: (intervention: InterventionMaintenance, commentaire: string, dateFin: string, heureFin: string) => Promise<void>
 }) {
   const compte = compterPhotosParType(intervention.photos)
+  const [dateFin, setDateFin] = useState(intervention.date_fin || formatDateInput(new Date()))
+  const [heureFin, setHeureFin] = useState(intervention.heure_fin?.slice(0, 5) || '')
   const [commentaire, setCommentaire] = useState('')
   const [soumission, setSoumission] = useState(false)
-  const dateFinPresente = Boolean(intervention.date_fin)
-  const heureFinPresente = Boolean(intervention.heure_fin)
+  const dateFinPresente = Boolean(dateFin)
+  const heureFinPresente = Boolean(heureFin)
   const peutFermer = compte.avant > 0 && compte.apres > 0 && dateFinPresente && heureFinPresente
 
   async function fermer() {
@@ -660,7 +688,7 @@ function FermetureModal({ intervention, onClose, onSubmit }: {
 
     setSoumission(true)
     try {
-      await onSubmit(intervention, commentaire)
+      await onSubmit(intervention, commentaire, dateFin, heureFin)
     } finally {
       setSoumission(false)
     }
@@ -670,10 +698,12 @@ function FermetureModal({ intervention, onClose, onSubmit }: {
     <Modal title={`Fermer l'intervention - ${intervention.titre}`} onClose={onClose}>
       <div className="space-y-4">
         <VerificationPhoto ok={compte.avant > 0} texte={`Photo avant presente (${compte.avant})`} />
-        <VerificationPhoto ok={compte.apres > 0} texte={`Photo apres presente (${compte.apres})`} />
-        <VerificationPhoto ok={dateFinPresente} texte={`Date fin ${dateFinPresente ? formatDate(intervention.date_fin!) : 'manquante'}`} />
-        <VerificationPhoto ok={heureFinPresente} texte={`Heure fin ${heureFinPresente ? formatHeure(intervention.heure_fin!) : 'manquante'}`} />
-        {!peutFermer && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Ajoute les photos avant/apres, la date fin et l'heure fin avant fermeture.</p>}
+        <VerificationPhoto ok={compte.apres > 0} texte={`Photo travaux fini presente (${compte.apres})`} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Champ label="Date fin"><input type="date" value={dateFin} onChange={(event) => setDateFin(event.target.value)} className={inputClass} /></Champ>
+          <Champ label="Heure fin"><input type="time" value={heureFin} onChange={(event) => setHeureFin(event.target.value)} className={inputClass} /></Champ>
+        </div>
+        {!peutFermer && <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">Ajoute les photos avant/travaux fini, la date fin et l'heure fin avant fermeture.</p>}
         <Champ label="Commentaire de fermeture"><textarea value={commentaire} onChange={(event) => setCommentaire(event.target.value)} className={textareaClass} /></Champ>
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className={secondaryButton}>Annuler</button>
@@ -745,12 +775,18 @@ function libellePriorite(priorite: string) {
   return { basse: 'Basse', normale: 'Normale', urgente: 'Urgente' }[priorite] || priorite
 }
 
+function libelleTypeIntervention(type?: TypeInterventionMaintenance | string | null) {
+  if (!type) return 'Autre'
+  if (typeof type === 'string') return type
+  return type.nom
+}
+
 function libelleEtat(etat?: string) {
   return { AFFECTE: 'Affecte', EN_COURS: 'En cours', BLOQUE: 'Bloque', TERMINE: 'Termine' }[etat || 'AFFECTE'] || etat || 'Affecte'
 }
 
 function libelleTypePhoto(type: TypePhotoIntervention) {
-  return { avant: 'Avant', apres: 'Apres', progression: 'Progression', anomalie: 'Anomalie', detail: 'Detail' }[type]
+  return { avant: 'Avant', apres: 'Travaux fini', progression: 'Progression', anomalie: 'Anomalie', detail: 'Detail' }[type]
 }
 
 function nomLieu(lieu: Lieu | null | undefined) {
@@ -760,6 +796,10 @@ function nomLieu(lieu: Lieu | null | undefined) {
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T00:00:00`))
+}
+
+function formatDateOuTiret(date: string | null | undefined) {
+  return date ? formatDate(date) : '-'
 }
 
 function formatDateHeure(date: string) {
@@ -773,6 +813,16 @@ function formatPeriodeIntervention(intervention: InterventionMaintenance) {
 
   if (dateFin === intervention.date_intervention && !intervention.heure_fin) return debut
   return `${debut} -> ${fin}`
+}
+
+function comparerInterventionsParDebut(a: InterventionMaintenance, b: InterventionMaintenance, ordre: OrdreTri) {
+  const valeurA = valeurDateHeure(a.date_intervention, a.heure_debut)
+  const valeurB = valeurDateHeure(b.date_intervention, b.heure_debut)
+  return ordre === 'recent' ? valeurB - valeurA : valeurA - valeurB
+}
+
+function valeurDateHeure(date: string, heure?: string | null) {
+  return new Date(`${date}T${heure || '00:00'}`).getTime()
 }
 
 function formatHeure(heure: string) {

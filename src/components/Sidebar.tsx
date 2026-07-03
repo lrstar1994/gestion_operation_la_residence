@@ -139,7 +139,7 @@ function SidebarContent({
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pr-1">
         <MenuLink to="/" icon={Home} label="Tableau de bord" />
 
-        {peutVoirPlanning && <MenuLink to="/planning" icon={CalendarDays} label="Planning" />}
+        {peutVoirPlanning && <MenuLink to="/planning" icon={CalendarDays} label="Planning du personnel" />}
         {peutVoirTachesPeriodiques && <MenuLink to="/taches-periodiques" icon={Repeat} label="Taches periodiques" />}
         {peutVoirMaintenance && <MenuLink to="/interventions-maintenance" icon={Wrench} label="Interventions" />}
         {estAdmin && <MenuLink to="/historique-interventions" icon={History} label="Historique interventions" />}

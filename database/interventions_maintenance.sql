@@ -1,8 +1,15 @@
+CREATE TABLE IF NOT EXISTS public.type_intervention_maintenance (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  nom varchar(100) NOT NULL UNIQUE,
+  est_actif boolean DEFAULT true
+);
+
 CREATE TABLE IF NOT EXISTS public.intervention_maintenance (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   titre varchar(200) NOT NULL,
   description text,
   travail_a_faire text,
+  id_type_intervention uuid NOT NULL REFERENCES public.type_intervention_maintenance(id),
   id_lieu uuid NOT NULL REFERENCES public.lieux(id) ON DELETE CASCADE,
   date_intervention date NOT NULL,
   heure_debut time,
@@ -39,11 +46,25 @@ CREATE TABLE IF NOT EXISTS public.commentaire_intervention (
 CREATE INDEX IF NOT EXISTS idx_intervention_maintenance_lieu ON public.intervention_maintenance(id_lieu);
 CREATE INDEX IF NOT EXISTS idx_intervention_maintenance_etat ON public.intervention_maintenance(id_etat);
 CREATE INDEX IF NOT EXISTS idx_intervention_maintenance_priorite ON public.intervention_maintenance(priorite);
+CREATE INDEX IF NOT EXISTS idx_intervention_maintenance_type ON public.intervention_maintenance(id_type_intervention);
 CREATE INDEX IF NOT EXISTS idx_intervention_maintenance_date ON public.intervention_maintenance(date_intervention);
 CREATE INDEX IF NOT EXISTS idx_photo_intervention_intervention ON public.photo_intervention(id_intervention);
 CREATE INDEX IF NOT EXISTS idx_photo_intervention_type ON public.photo_intervention(type_photo);
 CREATE INDEX IF NOT EXISTS idx_commentaire_intervention_intervention ON public.commentaire_intervention(id_intervention);
 
+INSERT INTO public.type_intervention_maintenance (nom)
+VALUES
+  ('Electricite'),
+  ('Plomberie'),
+  ('Menuiserie'),
+  ('Metallerie'),
+  ('Peinture'),
+  ('Maconnerie'),
+  ('Carrelage'),
+  ('Jardin / Exterieur'),
+  ('Nettoyage technique'),
+  ('Autre')
+ON CONFLICT (nom) DO NOTHING;
 
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('interventions', 'interventions', true)
@@ -135,9 +156,14 @@ CREATE TRIGGER trigger_verrouiller_photos_intervention
   EXECUTE FUNCTION public.empecher_modification_photos_intervention_fermee();
 
 ALTER TABLE public.intervention_maintenance ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.type_intervention_maintenance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.photo_intervention ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.commentaire_intervention ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Lecture types intervention maintenance" ON public.type_intervention_maintenance;
+DROP POLICY IF EXISTS "Gestion types intervention maintenance" ON public.type_intervention_maintenance;
+DROP POLICY IF EXISTS "Modification types intervention maintenance" ON public.type_intervention_maintenance;
+DROP POLICY IF EXISTS "Suppression types intervention maintenance" ON public.type_intervention_maintenance;
 DROP POLICY IF EXISTS "Lecture interventions maintenance" ON public.intervention_maintenance;
 DROP POLICY IF EXISTS "Gestion interventions maintenance" ON public.intervention_maintenance;
 DROP POLICY IF EXISTS "Modification interventions maintenance" ON public.intervention_maintenance;
@@ -148,6 +174,20 @@ DROP POLICY IF EXISTS "Modification photos intervention" ON public.photo_interve
 DROP POLICY IF EXISTS "Suppression photos intervention" ON public.photo_intervention;
 DROP POLICY IF EXISTS "Lecture commentaires intervention" ON public.commentaire_intervention;
 DROP POLICY IF EXISTS "Gestion commentaires intervention" ON public.commentaire_intervention;
+
+CREATE POLICY "Lecture types intervention maintenance"
+  ON public.type_intervention_maintenance FOR SELECT TO authenticated
+  USING (public.peut_gerer_interventions_maintenance(auth.uid()));
+CREATE POLICY "Gestion types intervention maintenance"
+  ON public.type_intervention_maintenance FOR INSERT TO authenticated
+  WITH CHECK (public.est_admin(auth.uid()));
+CREATE POLICY "Modification types intervention maintenance"
+  ON public.type_intervention_maintenance FOR UPDATE TO authenticated
+  USING (public.est_admin(auth.uid()))
+  WITH CHECK (public.est_admin(auth.uid()));
+CREATE POLICY "Suppression types intervention maintenance"
+  ON public.type_intervention_maintenance FOR DELETE TO authenticated
+  USING (public.est_admin(auth.uid()));
 
 CREATE POLICY "Lecture interventions maintenance"
   ON public.intervention_maintenance FOR SELECT TO authenticated

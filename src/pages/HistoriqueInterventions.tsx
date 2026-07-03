@@ -4,9 +4,11 @@ import { toast } from 'sonner'
 import {
   compterPhotosParType,
   listerInterventionsMaintenance,
+  listerTypesInterventionMaintenance,
   urlPubliquePhoto,
   type InterventionMaintenance,
   type PrioriteIntervention,
+  type TypeInterventionMaintenance,
 } from '../api/interventionsMaintenance'
 import { listerLieux, type Lieu } from '../api/lieux'
 import { useAuth } from '../hooks/useAuth'
@@ -17,6 +19,7 @@ type GroupeLieu = {
   sousTitre: string
   interventions: InterventionMaintenance[]
 }
+type OrdreTri = 'recent' | 'ancien'
 
 const priorites: Array<PrioriteIntervention | 'tous'> = ['tous', 'urgente', 'normale', 'basse']
 
@@ -24,24 +27,29 @@ export function HistoriqueInterventions() {
   const { estAdmin } = useAuth()
   const [interventions, setInterventions] = useState<InterventionMaintenance[]>([])
   const [lieux, setLieux] = useState<Lieu[]>([])
+  const [typesIntervention, setTypesIntervention] = useState<TypeInterventionMaintenance[]>([])
   const [chargement, setChargement] = useState(true)
   const [recherche, setRecherche] = useState('')
   const [lieuFiltre, setLieuFiltre] = useState('tous')
   const [prioriteFiltre, setPrioriteFiltre] = useState<PrioriteIntervention | 'tous'>('tous')
+  const [typeFiltre, setTypeFiltre] = useState('tous')
   const [dateDebut, setDateDebut] = useState('')
   const [dateFin, setDateFin] = useState('')
+  const [ordreTri, setOrdreTri] = useState<OrdreTri>('recent')
   const [detail, setDetail] = useState<InterventionMaintenance | null>(null)
 
   const charger = useCallback(async () => {
     setChargement(true)
     try {
-      const [interventionsResultat, lieuxResultat] = await Promise.all([
+      const [interventionsResultat, lieuxResultat, typesInterventionResultat] = await Promise.all([
         listerInterventionsMaintenance(),
         listerLieux(),
+        listerTypesInterventionMaintenance(),
       ])
 
       setInterventions(interventionsResultat)
       setLieux(lieuxResultat)
+      setTypesIntervention(typesInterventionResultat)
       setDetail((selection) => selection ? interventionsResultat.find((item) => item.id === selection.id) || null : null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Historique impossible a charger.')
@@ -61,6 +69,7 @@ export function HistoriqueInterventions() {
       if (intervention.etat?.nom !== 'TERMINE') return false
       if (lieuFiltre !== 'tous' && intervention.id_lieu !== lieuFiltre) return false
       if (prioriteFiltre !== 'tous' && intervention.priorite !== prioriteFiltre) return false
+      if (typeFiltre !== 'tous' && intervention.id_type_intervention !== typeFiltre) return false
       if (dateDebut && intervention.date_intervention < dateDebut) return false
       if (dateFin && intervention.date_intervention > dateFin) return false
 
@@ -68,6 +77,7 @@ export function HistoriqueInterventions() {
 
       return [
         intervention.titre,
+        intervention.type_intervention?.nom,
         intervention.description,
         intervention.travail_a_faire,
         intervention.lieu?.nom,
@@ -75,7 +85,7 @@ export function HistoriqueInterventions() {
         intervention.executant?.nom,
       ].filter(Boolean).join(' ').toLowerCase().includes(terme)
     })
-  }, [dateDebut, dateFin, interventions, lieuFiltre, prioriteFiltre, recherche])
+  }, [dateDebut, dateFin, interventions, lieuFiltre, prioriteFiltre, recherche, typeFiltre])
 
   const groupes = useMemo(() => {
     const map = new Map<string, GroupeLieu>()
@@ -97,10 +107,10 @@ export function HistoriqueInterventions() {
     return Array.from(map.values())
       .map((groupe) => ({
         ...groupe,
-        interventions: groupe.interventions.sort((a, b) => b.date_intervention.localeCompare(a.date_intervention)),
+        interventions: groupe.interventions.sort((a, b) => comparerInterventionsParFin(a, b, ordreTri)),
       }))
       .sort((a, b) => a.titre.localeCompare(b.titre))
-  }, [interventionsFiltrees])
+  }, [interventionsFiltrees, ordreTri])
 
   if (!estAdmin()) {
     return (
@@ -129,7 +139,7 @@ export function HistoriqueInterventions() {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-7">
           <label className="relative xl:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -146,10 +156,18 @@ export function HistoriqueInterventions() {
           <select value={prioriteFiltre} onChange={(event) => setPrioriteFiltre(event.target.value as PrioriteIntervention | 'tous')} className={inputClass}>
             {priorites.map((priorite) => <option key={priorite} value={priorite}>{priorite === 'tous' ? 'Toutes priorites' : priorite}</option>)}
           </select>
+          <select value={typeFiltre} onChange={(event) => setTypeFiltre(event.target.value)} className={inputClass}>
+            <option value="tous">Tous les types</option>
+            {typesIntervention.map((type) => <option key={type.id} value={type.id}>{type.nom}</option>)}
+          </select>
           <div className="grid grid-cols-2 gap-2 xl:col-span-1">
             <input type="date" value={dateDebut} onChange={(event) => setDateDebut(event.target.value)} className={inputClass} />
             <input type="date" value={dateFin} onChange={(event) => setDateFin(event.target.value)} className={inputClass} />
           </div>
+          <select value={ordreTri} onChange={(event) => setOrdreTri(event.target.value as OrdreTri)} className={inputClass}>
+            <option value="recent">Plus recent</option>
+            <option value="ancien">Plus ancien</option>
+          </select>
         </div>
 
         <div className="divide-y divide-slate-200">
@@ -191,6 +209,7 @@ export function HistoriqueInterventions() {
                         <td className="px-3 py-3 text-slate-600">{formatPeriodeIntervention(intervention)}</td>
                         <td className="px-3 py-3">
                           <p className="font-medium text-slate-900">{intervention.titre}</p>
+                          <p className="mt-1 text-xs font-semibold text-slate-600">{libelleTypeIntervention(intervention.type_intervention)}</p>
                           {intervention.description && <p className="line-clamp-1 text-xs text-slate-500">{intervention.description}</p>}
                           {intervention.travail_a_faire && <p className="line-clamp-1 text-xs text-teal-700">Travail : {intervention.travail_a_faire}</p>}
                         </td>
@@ -228,6 +247,7 @@ export function HistoriqueInterventions() {
 
 function DetailHistorique({ intervention, onClose }: { intervention: InterventionMaintenance; onClose: () => void }) {
   const compte = compterPhotosParType(intervention.photos)
+  const photosVisibles = photosInterventionVisibles(intervention)
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 px-4 py-6">
@@ -247,6 +267,7 @@ function DetailHistorique({ intervention, onClose }: { intervention: Interventio
             <Info label="Lieu" value={intervention.lieu ? nomLieu(intervention.lieu) : '-'} />
             <Info label="Batiment" value={intervention.lieu?.batiment?.nom || '-'} />
             <Info label="Executant" value={intervention.executant?.nom || '-'} />
+            <Info label="Type intervention" value={libelleTypeIntervention(intervention.type_intervention)} />
             <Info label="Priorite" value={intervention.priorite} />
             <Info label="Etat" value={libelleEtat(intervention.etat?.nom)} />
             <Info label="Date debut" value={formatDate(intervention.date_intervention)} />
@@ -257,18 +278,17 @@ function DetailHistorique({ intervention, onClose }: { intervention: Interventio
             <Info label="Travail a faire" value={intervention.travail_a_faire || 'Non renseigne'} />
             <div className="grid grid-cols-2 gap-2 pt-2">
               <PhotoCount label="Avant" value={compte.avant} />
-              <PhotoCount label="Apres" value={compte.apres} />
+              <PhotoCount label="Travaux fini" value={compte.apres} />
               <PhotoCount label="Progression" value={compte.progression} />
-              <PhotoCount label="Anomalie" value={compte.anomalie} />
             </div>
           </aside>
 
           <div className="space-y-4">
             <section>
               <h3 className="mb-2 font-semibold text-slate-950">Photos</h3>
-              {intervention.photos && intervention.photos.length > 0 ? (
+              {photosVisibles.length > 0 ? (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {intervention.photos.map((photo) => (
+                  {photosVisibles.map((photo) => (
                     <figure key={photo.id} className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                       <img src={urlPubliquePhoto(photo.url_storage)} alt={photo.nom_fichier} className="h-44 w-full object-cover" />
                       <figcaption className="space-y-1 p-3 text-xs text-slate-600">
@@ -350,7 +370,11 @@ function nomLieu(lieu: Lieu) {
 }
 
 function totalPhotos(intervention: InterventionMaintenance) {
-  return intervention.photos?.length || 0
+  return photosInterventionVisibles(intervention).length
+}
+
+function photosInterventionVisibles(intervention: InterventionMaintenance) {
+  return intervention.photos?.filter((photo) => photo.type_photo === 'avant' || photo.type_photo === 'apres' || photo.type_photo === 'progression') || []
 }
 
 function couleurPriorite(priorite: PrioriteIntervention): 'red' | 'orange' | 'green' | 'slate' {
@@ -375,6 +399,12 @@ function libelleEtat(etat?: string) {
   }[etat || ''] || etat || '-'
 }
 
+function libelleTypeIntervention(type?: TypeInterventionMaintenance | string | null) {
+  if (!type) return 'Autre'
+  if (typeof type === 'string') return type
+  return type.nom
+}
+
 function formatDate(date: string) {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T00:00:00`))
 }
@@ -390,6 +420,16 @@ function formatPeriodeIntervention(intervention: InterventionMaintenance) {
 
   if (dateFin === intervention.date_intervention && !intervention.heure_fin) return debut
   return `${debut} -> ${fin}`
+}
+
+function comparerInterventionsParFin(a: InterventionMaintenance, b: InterventionMaintenance, ordre: OrdreTri) {
+  const valeurA = valeurDateHeure(a.date_fin || a.date_intervention, a.heure_fin)
+  const valeurB = valeurDateHeure(b.date_fin || b.date_intervention, b.heure_fin)
+  return ordre === 'recent' ? valeurB - valeurA : valeurA - valeurB
+}
+
+function valeurDateHeure(date: string, heure?: string | null) {
+  return new Date(`${date}T${heure || '00:00'}`).getTime()
 }
 
 function formatHeure(heure: string) {
