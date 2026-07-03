@@ -522,7 +522,7 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer
   )
 }
 
-function InterventionModal({ mode, intervention, lieux, executants, etats, onClose, onSubmit }: {
+function InterventionModal({ mode, intervention, lieux, executants, etats, typesIntervention, onClose, onSubmit }: {
   mode: ModeModal
   intervention?: InterventionMaintenance
   lieux: Lieu[]

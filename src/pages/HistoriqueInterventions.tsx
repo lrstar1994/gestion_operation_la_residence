@@ -10,6 +10,7 @@ import {
   type PrioriteIntervention,
   type TypeInterventionMaintenance,
 } from '../api/interventionsMaintenance'
+import { listerExecutants, type Executant } from '../api/executants'
 import { listerLieux, type Lieu } from '../api/lieux'
 import { useAuth } from '../hooks/useAuth'
 
@@ -21,17 +22,16 @@ type GroupeLieu = {
 }
 type OrdreTri = 'recent' | 'ancien'
 
-const priorites: Array<PrioriteIntervention | 'tous'> = ['tous', 'urgente', 'normale', 'basse']
-
 export function HistoriqueInterventions() {
   const { estAdmin } = useAuth()
   const [interventions, setInterventions] = useState<InterventionMaintenance[]>([])
   const [lieux, setLieux] = useState<Lieu[]>([])
+  const [executants, setExecutants] = useState<Executant[]>([])
   const [typesIntervention, setTypesIntervention] = useState<TypeInterventionMaintenance[]>([])
   const [chargement, setChargement] = useState(true)
   const [recherche, setRecherche] = useState('')
   const [lieuFiltre, setLieuFiltre] = useState('tous')
-  const [prioriteFiltre, setPrioriteFiltre] = useState<PrioriteIntervention | 'tous'>('tous')
+  const [executantFiltre, setExecutantFiltre] = useState('tous')
   const [typeFiltre, setTypeFiltre] = useState('tous')
   const [dateDebut, setDateDebut] = useState('')
   const [dateFin, setDateFin] = useState('')
@@ -41,14 +41,16 @@ export function HistoriqueInterventions() {
   const charger = useCallback(async () => {
     setChargement(true)
     try {
-      const [interventionsResultat, lieuxResultat, typesInterventionResultat] = await Promise.all([
+      const [interventionsResultat, lieuxResultat, executantsResultat, typesInterventionResultat] = await Promise.all([
         listerInterventionsMaintenance(),
         listerLieux(),
+        listerExecutants(),
         listerTypesInterventionMaintenance(),
       ])
 
       setInterventions(interventionsResultat)
       setLieux(lieuxResultat)
+      setExecutants(executantsResultat.filter((executant) => estMaintenancier(executant)))
       setTypesIntervention(typesInterventionResultat)
       setDetail((selection) => selection ? interventionsResultat.find((item) => item.id === selection.id) || null : null)
     } catch (error) {
@@ -68,7 +70,7 @@ export function HistoriqueInterventions() {
     return interventions.filter((intervention) => {
       if (intervention.etat?.nom !== 'TERMINE') return false
       if (lieuFiltre !== 'tous' && intervention.id_lieu !== lieuFiltre) return false
-      if (prioriteFiltre !== 'tous' && intervention.priorite !== prioriteFiltre) return false
+      if (executantFiltre !== 'tous' && intervention.id_executant !== executantFiltre) return false
       if (typeFiltre !== 'tous' && intervention.id_type_intervention !== typeFiltre) return false
       if (dateDebut && intervention.date_intervention < dateDebut) return false
       if (dateFin && intervention.date_intervention > dateFin) return false
@@ -85,7 +87,7 @@ export function HistoriqueInterventions() {
         intervention.executant?.nom,
       ].filter(Boolean).join(' ').toLowerCase().includes(terme)
     })
-  }, [dateDebut, dateFin, interventions, lieuFiltre, prioriteFiltre, recherche, typeFiltre])
+  }, [dateDebut, dateFin, executantFiltre, interventions, lieuFiltre, recherche, typeFiltre])
 
   const groupes = useMemo(() => {
     const map = new Map<string, GroupeLieu>()
@@ -153,8 +155,9 @@ export function HistoriqueInterventions() {
             <option value="tous">Tous les lieux</option>
             {lieux.map((lieu) => <option key={lieu.id} value={lieu.id}>{nomLieu(lieu)}</option>)}
           </select>
-          <select value={prioriteFiltre} onChange={(event) => setPrioriteFiltre(event.target.value as PrioriteIntervention | 'tous')} className={inputClass}>
-            {priorites.map((priorite) => <option key={priorite} value={priorite}>{priorite === 'tous' ? 'Toutes priorites' : priorite}</option>)}
+          <select value={executantFiltre} onChange={(event) => setExecutantFiltre(event.target.value)} className={inputClass}>
+            <option value="tous">Tous executants</option>
+            {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
           </select>
           <select value={typeFiltre} onChange={(event) => setTypeFiltre(event.target.value)} className={inputClass}>
             <option value="tous">Tous les types</option>
@@ -375,6 +378,10 @@ function totalPhotos(intervention: InterventionMaintenance) {
 
 function photosInterventionVisibles(intervention: InterventionMaintenance) {
   return intervention.photos?.filter((photo) => photo.type_photo === 'avant' || photo.type_photo === 'apres' || photo.type_photo === 'progression') || []
+}
+
+function estMaintenancier(executant: Executant) {
+  return (executant.domaine?.nom || '').trim().toLowerCase() === 'maintenancier'
 }
 
 function couleurPriorite(priorite: PrioriteIntervention): 'red' | 'orange' | 'green' | 'slate' {
