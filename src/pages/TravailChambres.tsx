@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { CalendarCheck, Loader2, RefreshCcw, Save, Search, Trash2 } from 'lucide-react'
+import { CalendarCheck, Loader2, Plus, RefreshCcw, Save, Search, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { listerExecutants, type Executant } from '../api/executants'
 import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
@@ -46,8 +46,6 @@ type ChargeExecutantTravail = {
   nom: string
   domaine: string
   points: number
-  total: number
-  count: number
   capaciteMax: number | null
   taux: number | null
   surcharge: boolean
@@ -71,6 +69,7 @@ export function TravailChambres() {
   const [toutesTaches, setToutesTaches] = useState<TacheChambre[]>([])
   const [chargement, setChargement] = useState(true)
   const [soumission, setSoumission] = useState(false)
+  const [formulaireOuvert, setFormulaireOuvert] = useState(false)
 
   const [idMouvement, setIdMouvement] = useState('')
   const [dateExecution, setDateExecution] = useState(aujourdHui)
@@ -322,8 +321,6 @@ export function TravailChambres() {
           nom: charge.executant?.nom || 'Non affecte',
           domaine: charge.executant?.domaine?.nom || 'Aucun domaine',
           points: picJournalier,
-          total: charge.points,
-          count: charge.count,
           capaciteMax: charge.capaciteMax,
           taux: charge.capaciteMax === null ? null : picJournalier / charge.capaciteMax,
           pointsParDate,
@@ -392,6 +389,7 @@ export function TravailChambres() {
       setToutesTaches((liste) => [...liste, tache])
       setIdMouvement('')
       setCommentaire('')
+      setFormulaireOuvert(false)
       toast.success('Tache chambre planifiee.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Creation impossible.')
@@ -429,6 +427,7 @@ export function TravailChambres() {
     setDateExecution(mouvement.date < aujourdHui ? aujourdHui : mouvement.date)
     setIdExecutant(mouvement.id_executant || mouvement.lieu?.batiment?.id_executant_defaut || '')
     setUrgence(urgenceDepuisMouvement(mouvement.date, aujourdHui))
+    setFormulaireOuvert(true)
   }
 
   function ouvrirModal(item: ItemPlanningTravail) {
@@ -473,77 +472,19 @@ export function TravailChambres() {
           </h1>
           <p className="mt-1 text-sm text-slate-500">Planifie le travail reel avec une date execution separee du mouvement hotelier.</p>
         </div>
-        <button type="button" onClick={() => void charger()} className={secondaryButton}>
-          <RefreshCcw className="h-4 w-4" />
-          Rafraichir
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button type="button" onClick={() => setFormulaireOuvert(true)} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800">
+            <Plus className="h-4 w-4" />
+            Programmer
+          </button>
+          <button type="button" onClick={() => void charger()} className={secondaryButton}>
+            <RefreshCcw className="h-4 w-4" />
+            Rafraichir
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
-        <aside className="space-y-4">
-          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="font-semibold text-slate-950">Planifier depuis un mouvement</h2>
-            <p className="mt-1 text-sm text-slate-500">Le mouvement reste dans le planning chambres, la charge sera portee par la date execution.</p>
-
-            <div className="mt-4 space-y-3">
-              <Champ label="Mouvement hotelier">
-                <select value={idMouvement} onChange={(event) => setIdMouvement(event.target.value)} className={inputClass}>
-                  <option value="">Choisir</option>
-                  {mouvementsDisponibles.map((mouvement) => (
-                    <option key={mouvement.id} value={mouvement.id}>
-                      {formatDate(mouvement.date)} - {mouvement.lieu?.nom || 'Chambre'} - {mouvement.type_mouvement?.nom || 'Mouvement'}
-                    </option>
-                  ))}
-                </select>
-              </Champ>
-
-              {mouvementSelectionne && (
-                <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-900">{mouvementSelectionne.lieu?.nom}</p>
-                  <p>{mouvementSelectionne.type_mouvement?.nom} - {mouvementSelectionne.type_mouvement?.points || 0} point(s)</p>
-                  <p>Mouvement le {formatDate(mouvementSelectionne.date)}</p>
-                </div>
-              )}
-
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                <Champ label="Date execution">
-                  <input type="date" value={dateExecution} onChange={(event) => setDateExecution(event.target.value)} className={inputClass} />
-                </Champ>
-                <Champ label="Date limite">
-                  <input type="date" value={dateLimite} onChange={(event) => setDateLimite(event.target.value)} className={inputClass} />
-                </Champ>
-              </div>
-
-              <Champ label="Executant">
-                <select value={idExecutant} onChange={(event) => setIdExecutant(event.target.value)} className={inputClass}>
-                  <option value="">Non affecte</option>
-                  {executants.map((executant) => (
-                    <option key={executant.id} value={executant.id}>
-                      {executant.nom}{estExecutantEnTravail(executant.id, dateExecution) ? '' : ' (pas en travail)'}
-                    </option>
-                  ))}
-                </select>
-              </Champ>
-
-              <Champ label="Urgence">
-                <select value={urgence} onChange={(event) => setUrgence(event.target.value as UrgenceTacheChambre)} className={inputClass}>
-                  {urgences.map((item) => <option key={item} value={item}>{libelleUrgence(item)}</option>)}
-                </select>
-              </Champ>
-
-              <Champ label="Commentaire">
-                <textarea value={commentaire} onChange={(event) => setCommentaire(event.target.value)} className={textareaClass} />
-              </Champ>
-
-              <button type="button" disabled={soumission || !idMouvement} onClick={() => void creerDepuisMouvement()} className={primaryButton}>
-                {soumission ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Planifier
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        <main className="min-w-0 space-y-4">
+      <main className="min-w-0 space-y-4">
           <ChargeExecutantsOperationnelles charges={chargesExecutantsOperationnelles} />
           <ChargeBatimentsOperationnelles charges={chargesBatimentsOperationnelles} dates={datesPlanning} />
 
@@ -656,8 +597,84 @@ export function TravailChambres() {
               </div>
             )}
           </div>
-        </main>
-      </div>
+      </main>
+
+      {formulaireOuvert && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 px-4 py-6">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-slate-950">Planifier depuis un mouvement</h2>
+                <p className="mt-1 text-sm text-slate-500">Le mouvement reste dans le planning chambres, la charge sera portee par la date execution.</p>
+              </div>
+              <button type="button" onClick={() => setFormulaireOuvert(false)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100" aria-label="Fermer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <Champ label="Mouvement hotelier">
+                <select value={idMouvement} onChange={(event) => setIdMouvement(event.target.value)} className={inputClass}>
+                  <option value="">Choisir</option>
+                  {mouvementsDisponibles.map((mouvement) => (
+                    <option key={mouvement.id} value={mouvement.id}>
+                      {formatDate(mouvement.date)} - {mouvement.lieu?.nom || 'Chambre'} - {mouvement.type_mouvement?.nom || 'Mouvement'}
+                    </option>
+                  ))}
+                </select>
+              </Champ>
+
+              {mouvementSelectionne && (
+                <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+                  <p className="font-semibold text-slate-900">{mouvementSelectionne.lieu?.nom}</p>
+                  <p>{mouvementSelectionne.type_mouvement?.nom} - {mouvementSelectionne.type_mouvement?.points || 0} point(s)</p>
+                  <p>Mouvement le {formatDate(mouvementSelectionne.date)}</p>
+                </div>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Champ label="Date execution">
+                  <input type="date" value={dateExecution} onChange={(event) => setDateExecution(event.target.value)} className={inputClass} />
+                </Champ>
+                <Champ label="Date limite">
+                  <input type="date" value={dateLimite} onChange={(event) => setDateLimite(event.target.value)} className={inputClass} />
+                </Champ>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Champ label="Executant">
+                  <select value={idExecutant} onChange={(event) => setIdExecutant(event.target.value)} className={inputClass}>
+                    <option value="">Non affecte</option>
+                    {executants.map((executant) => (
+                      <option key={executant.id} value={executant.id}>
+                        {executant.nom}{estExecutantEnTravail(executant.id, dateExecution) ? '' : ' (pas en travail)'}
+                      </option>
+                    ))}
+                  </select>
+                </Champ>
+
+                <Champ label="Urgence">
+                  <select value={urgence} onChange={(event) => setUrgence(event.target.value as UrgenceTacheChambre)} className={inputClass}>
+                    {urgences.map((item) => <option key={item} value={item}>{libelleUrgence(item)}</option>)}
+                  </select>
+                </Champ>
+              </div>
+
+              <Champ label="Commentaire">
+                <textarea value={commentaire} onChange={(event) => setCommentaire(event.target.value)} className={textareaClass} />
+              </Champ>
+
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button type="button" onClick={() => setFormulaireOuvert(false)} className={secondaryButton}>Annuler</button>
+                <button type="button" disabled={soumission || !idMouvement} onClick={() => void creerDepuisMouvement()} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60">
+                  {soumission ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Planifier
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalItem?.tache && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 px-4 py-6">
@@ -731,12 +748,9 @@ function Badge({ tone, children }: { tone: 'red' | 'orange' | 'green' | 'slate';
 
 function ChargeExecutantsOperationnelles({ charges }: { charges: ChargeExecutantTravail[] }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="font-semibold text-slate-950">Charge des executants</h2>
-          <p className="text-xs text-slate-500">Selon la date d'execution des travaux chambres</p>
-        </div>
+        <h2 className="font-semibold text-slate-950">Charge des executants</h2>
         <span className="text-xs font-semibold uppercase text-slate-500">
           {charges.filter((charge) => charge.surcharge).length} surcharge(s)
         </span>
@@ -767,11 +781,6 @@ function ChargeExecutantsOperationnelles({ charges }: { charges: ChargeExecutant
                 </div>
               )}
 
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                <span>{charge.count} travail(aux)</span>
-                <span>Total periode : {charge.total} pts</span>
-              </div>
-
               {charge.pointsParDate.length > 0 && (
                 <div className="mt-3 space-y-1">
                   {charge.pointsParDate.map((jour) => (
@@ -788,7 +797,7 @@ function ChargeExecutantsOperationnelles({ charges }: { charges: ChargeExecutant
           )
         })}
       </div>
-    </section>
+    </div>
   )
 }
 
@@ -908,6 +917,5 @@ function formatDateInput(date: Date) {
 
 const inputClass = 'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100'
 const textareaClass = 'min-h-20 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100'
-const primaryButton = 'inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60'
 const secondaryButton = 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100'
 const dangerButton = 'inline-flex h-9 w-9 items-center justify-center rounded-md border border-rose-300 text-rose-700 hover:bg-rose-50'
