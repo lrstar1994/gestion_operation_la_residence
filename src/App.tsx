@@ -19,6 +19,7 @@ import { PlanningHebdomadaire } from './pages/PlanningHebdomadaire'
 import { SuiviOperational } from './pages/SuiviOperational'
 import { TableauDeBord } from './pages/TableauDeBord'
 import { TachesPeriodiques } from './pages/TachesPeriodiques'
+import { TravailChambres } from './pages/TravailChambres'
 
 function LayoutPrive() {
   return (
@@ -47,6 +48,7 @@ function LayoutPrive() {
           </Route>
           <Route element={<ProtectedRoute domaine="chambres" />}>
             <Route path="planning-chambres" element={<PlanningChambres />} />
+            <Route path="travail-chambres" element={<TravailChambres />} />
             <Route path="historique-planning-chambres" element={<HistoriquePlanningChambres />} />
             <Route path="menages-chambres" element={<MenagesChambres />} />
             <Route path="suivi-operationnel" element={<SuiviOperational />} />

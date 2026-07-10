@@ -16,6 +16,7 @@ import {
   Users,
   Wrench,
   CalendarClock,
+  CalendarCheck,
   X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -144,6 +145,7 @@ function SidebarContent({
         {peutVoirMaintenance && <MenuLink to="/interventions-maintenance" icon={Wrench} label="Interventions" />}
         {estAdmin && <MenuLink to="/historique-interventions" icon={History} label="Historique interventions" />}
         {peutVoirPlanningChambres && <MenuLink to="/planning-chambres" icon={DoorOpen} label="Planning chambres" />}
+        {peutVoirPlanningChambres && <MenuLink to="/travail-chambres" icon={CalendarCheck} label="Travail chambres" />}
         {peutVoirPlanningChambres && <MenuLink to="/historique-planning-chambres" icon={CalendarClock} label="Historique chambres" />}
         {peutVoirPlanningChambres && <MenuLink to="/menages-chambres" icon={Sparkles} label="Menages chambres" />}
         {peutVoirPlanningChambres && <MenuLink to="/suivi-operationnel" icon={ClipboardCheck} label="Suivi operationnel" badge={bloquesAujourdhui} />}
