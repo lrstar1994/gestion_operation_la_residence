@@ -40,6 +40,7 @@ export type TacheChambrePayload = {
   points: number
   urgence: UrgenceTacheChambre
   commentaire: string | null
+  motif_blocage?: string | null
 }
 
 const selectTacheChambre =

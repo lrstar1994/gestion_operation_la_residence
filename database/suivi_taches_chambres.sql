@@ -101,3 +101,111 @@ CREATE POLICY "Insertion historique etat tache chambre"
 CREATE POLICY "Suppression historique etat tache chambre"
   ON public.historique_etat_tache_chambre FOR DELETE TO authenticated
   USING (public.est_admin(auth.uid()));
+
+CREATE OR REPLACE FUNCTION public.creer_tache_chambre_depuis_planning()
+RETURNS trigger AS $$
+DECLARE
+  executant_defaut uuid;
+  points_mouvement integer;
+  urgence_tache text;
+BEGIN
+  SELECT b.id_executant_defaut INTO executant_defaut
+  FROM public.lieux l
+  LEFT JOIN public.batiments b ON b.id = l.id_batiment
+  WHERE l.id = NEW.id_lieu;
+
+  SELECT COALESCE(points, 0) INTO points_mouvement
+  FROM public.type_mouvement
+  WHERE id = NEW.id_type_mouvement;
+
+  urgence_tache := CASE WHEN NEW.date <= CURRENT_DATE THEN 'haute' ELSE 'normale' END;
+
+  IF TG_OP = 'INSERT' THEN
+    INSERT INTO public.tache_chambre (
+      id_planning_chambre,
+      id_lieu,
+      id_type_mouvement,
+      date_mouvement,
+      date_execution,
+      date_limite,
+      id_executant,
+      id_etat,
+      points,
+      urgence,
+      motif_blocage,
+      commentaire
+    )
+    VALUES (
+      NEW.id,
+      NEW.id_lieu,
+      NEW.id_type_mouvement,
+      NEW.date,
+      NEW.date,
+      NEW.date,
+      COALESCE(NEW.id_executant, executant_defaut),
+      NEW.id_etat,
+      points_mouvement,
+      urgence_tache,
+      NEW.motif_blocage,
+      NULL
+    )
+    ON CONFLICT (id_planning_chambre) DO NOTHING;
+  ELSE
+    UPDATE public.tache_chambre
+    SET
+      id_lieu = NEW.id_lieu,
+      id_type_mouvement = NEW.id_type_mouvement,
+      date_mouvement = NEW.date,
+      date_execution = NEW.date,
+      date_limite = NEW.date,
+      id_executant = COALESCE(NEW.id_executant, executant_defaut),
+      id_etat = NEW.id_etat,
+      points = points_mouvement,
+      urgence = urgence_tache,
+      motif_blocage = NEW.motif_blocage
+    WHERE id_planning_chambre = NEW.id
+      AND date_execution = OLD.date
+      AND date_limite = OLD.date;
+
+    IF NOT FOUND THEN
+      INSERT INTO public.tache_chambre (
+        id_planning_chambre,
+        id_lieu,
+        id_type_mouvement,
+        date_mouvement,
+        date_execution,
+        date_limite,
+        id_executant,
+        id_etat,
+        points,
+        urgence,
+        motif_blocage,
+        commentaire
+      )
+      VALUES (
+        NEW.id,
+        NEW.id_lieu,
+        NEW.id_type_mouvement,
+        NEW.date,
+        NEW.date,
+        NEW.date,
+        COALESCE(NEW.id_executant, executant_defaut),
+        NEW.id_etat,
+        points_mouvement,
+        urgence_tache,
+        NEW.motif_blocage,
+        NULL
+      )
+      ON CONFLICT (id_planning_chambre) DO NOTHING;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trigger_creer_tache_chambre_depuis_planning ON public.planning_chambre;
+CREATE TRIGGER trigger_creer_tache_chambre_depuis_planning
+  AFTER INSERT OR UPDATE OF id_lieu, date, id_type_mouvement, id_executant, id_etat, motif_blocage ON public.planning_chambre
+  FOR EACH ROW
+  EXECUTE FUNCTION public.creer_tache_chambre_depuis_planning();
