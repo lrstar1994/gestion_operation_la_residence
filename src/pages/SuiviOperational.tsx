@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CalendarDays, Clock, History, RefreshCcw, Search } from 'lucide-react'
 import { toast } from 'sonner'
-import type { PlanningChambre } from '../api/planningChambre'
 import { listerEtatsMouvement, type EtatMouvement } from '../api/planningChambre'
+import type { TacheChambre } from '../api/tachesChambres'
 import {
-  changerEtatMouvement,
-  listerHistoriqueEtatMouvement,
-  listerMouvementsSuivi,
-  type HistoriqueEtatMouvement,
+  changerEtatTacheChambre,
+  listerHistoriqueEtatTacheChambre,
+  listerTachesChambresSuivi,
+  type HistoriqueEtatTacheChambre,
 } from '../api/suiviOperationnel'
 
 const couleursEtat: Record<string, string> = {
@@ -19,7 +19,7 @@ const couleursEtat: Record<string, string> = {
 
 export function SuiviOperational() {
   const [date, setDate] = useState(formatDateInput(new Date()))
-  const [mouvements, setMouvements] = useState<PlanningChambre[]>([])
+  const [taches, setTaches] = useState<TacheChambre[]>([])
   const [etats, setEtats] = useState<EtatMouvement[]>([])
   const [chargement, setChargement] = useState(true)
   const [recherche, setRecherche] = useState('')
@@ -27,8 +27,8 @@ export function SuiviOperational() {
   const [executantFiltre, setExecutantFiltre] = useState('tous')
   const [etatFiltre, setEtatFiltre] = useState('tous')
   const [typeFiltre, setTypeFiltre] = useState('tous')
-  const [historiqueOuvert, setHistoriqueOuvert] = useState<PlanningChambre | null>(null)
-  const [historique, setHistorique] = useState<HistoriqueEtatMouvement[]>([])
+  const [historiqueOuvert, setHistoriqueOuvert] = useState<TacheChambre | null>(null)
+  const [historique, setHistorique] = useState<HistoriqueEtatTacheChambre[]>([])
   const [page, setPage] = useState(1)
   const [lignesParPage, setLignesParPage] = useState(15)
 
@@ -42,11 +42,11 @@ export function SuiviOperational() {
     if (afficherChargement) setChargement(true)
 
     try {
-      const [mouvementsResultat, etatsResultat] = await Promise.all([
-        listerMouvementsSuivi(date),
+      const [tachesResultat, etatsResultat] = await Promise.all([
+        listerTachesChambresSuivi(date),
         listerEtatsMouvement(),
       ])
-      setMouvements(mouvementsResultat)
+      setTaches(tachesResultat)
       setEtats(etatsResultat)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Suivi impossible a charger.')
@@ -56,43 +56,43 @@ export function SuiviOperational() {
   }
 
   const batiments = useMemo(
-    () => Array.from(new Map(mouvements.filter((mouvement) => mouvement.lieu?.batiment).map((mouvement) => [mouvement.lieu!.batiment!.id, mouvement.lieu!.batiment!])).values()).sort((a, b) => a.nom.localeCompare(b.nom)),
-    [mouvements],
+    () => Array.from(new Map(taches.filter((tache) => tache.lieu?.batiment).map((tache) => [tache.lieu!.batiment!.id, tache.lieu!.batiment!])).values()).sort((a, b) => a.nom.localeCompare(b.nom)),
+    [taches],
   )
   const executants = useMemo(
-    () => Array.from(new Map(mouvements.filter((mouvement) => mouvement.executant).map((mouvement) => [mouvement.executant!.id, mouvement.executant!])).values()).sort((a, b) => a.nom.localeCompare(b.nom)),
-    [mouvements],
+    () => Array.from(new Map(taches.filter((tache) => tache.executant).map((tache) => [tache.executant!.id, tache.executant!])).values()).sort((a, b) => a.nom.localeCompare(b.nom)),
+    [taches],
   )
   const types = useMemo(
-    () => Array.from(new Map(mouvements.filter((mouvement) => mouvement.type_mouvement).map((mouvement) => [mouvement.type_mouvement!.id, mouvement.type_mouvement!])).values()).sort((a, b) => a.nom.localeCompare(b.nom)),
-    [mouvements],
+    () => Array.from(new Map(taches.filter((tache) => tache.type_mouvement).map((tache) => [tache.type_mouvement!.id, tache.type_mouvement!])).values()).sort((a, b) => a.nom.localeCompare(b.nom)),
+    [taches],
   )
-  const mouvementsFiltres = useMemo(() => {
+  const tachesFiltrees = useMemo(() => {
     const terme = recherche.trim().toLowerCase()
 
-    return mouvements.filter((mouvement) => {
-      if (batimentFiltre !== 'tous' && mouvement.lieu?.id_batiment !== batimentFiltre) return false
-      if (executantFiltre !== 'tous' && mouvement.id_executant !== executantFiltre) return false
-      if (etatFiltre !== 'tous' && mouvement.id_etat !== etatFiltre) return false
-      if (typeFiltre !== 'tous' && mouvement.id_type_mouvement !== typeFiltre) return false
+    return taches.filter((tache) => {
+      if (batimentFiltre !== 'tous' && tache.lieu?.id_batiment !== batimentFiltre) return false
+      if (executantFiltre !== 'tous' && tache.id_executant !== executantFiltre) return false
+      if (etatFiltre !== 'tous' && tache.id_etat !== etatFiltre) return false
+      if (typeFiltre !== 'tous' && tache.id_type_mouvement !== typeFiltre) return false
       if (!terme) return true
 
       return [
-        mouvement.lieu?.nom,
-        mouvement.lieu?.numero,
-        mouvement.executant?.nom,
-        mouvement.type_mouvement?.nom,
-        mouvement.etat?.nom,
+        tache.lieu?.nom,
+        tache.lieu?.numero,
+        tache.executant?.nom,
+        tache.type_mouvement?.nom,
+        tache.etat?.nom,
       ].filter(Boolean).join(' ').toLowerCase().includes(terme)
     })
-  }, [batimentFiltre, etatFiltre, executantFiltre, mouvements, recherche, typeFiltre])
-  const resume = useMemo(() => calculerResume(mouvements), [mouvements])
-  const charges = useMemo(() => calculerChargesExecutants(mouvements), [mouvements])
-  const totalPages = Math.max(1, Math.ceil(mouvementsFiltres.length / lignesParPage))
-  const mouvementsPage = useMemo(() => {
+  }, [batimentFiltre, etatFiltre, executantFiltre, recherche, taches, typeFiltre])
+  const resume = useMemo(() => calculerResume(taches), [taches])
+  const charges = useMemo(() => calculerChargesExecutants(taches), [taches])
+  const totalPages = Math.max(1, Math.ceil(tachesFiltrees.length / lignesParPage))
+  const tachesPage = useMemo(() => {
     const debut = (page - 1) * lignesParPage
-    return mouvementsFiltres.slice(debut, debut + lignesParPage)
-  }, [lignesParPage, mouvementsFiltres, page])
+    return tachesFiltrees.slice(debut, debut + lignesParPage)
+  }, [lignesParPage, page, tachesFiltrees])
 
   useEffect(() => {
     setPage(1)
@@ -102,32 +102,32 @@ export function SuiviOperational() {
     if (page > totalPages) setPage(totalPages)
   }, [page, totalPages])
 
-  async function changerEtat(mouvement: PlanningChambre, idEtat: string) {
+  async function changerEtat(tache: TacheChambre, idEtat: string) {
     const etat = etats.find((item) => item.id === idEtat)
     let motif: string | null = null
 
     if (etat?.nom === 'BLOQUE') {
       motif = window.prompt('Motif du blocage')?.trim() || null
       if (!motif) {
-        toast.error('Le motif est obligatoire pour bloquer un mouvement.')
+        toast.error('Le motif est obligatoire pour bloquer une tache.')
         return
       }
     }
 
     try {
-      const mouvementMisAJour = await changerEtatMouvement(mouvement.id, idEtat, motif)
-      setMouvements((liste) => liste.map((item) => (item.id === mouvement.id ? mouvementMisAJour : item)))
+      const tacheMiseAJour = await changerEtatTacheChambre(tache.id, idEtat, motif)
+      setTaches((liste) => liste.map((item) => (item.id === tache.id ? tacheMiseAJour : item)))
       toast.success('Etat mis a jour.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Changement impossible.')
     }
   }
 
-  async function ouvrirHistorique(mouvement: PlanningChambre) {
-    setHistoriqueOuvert(mouvement)
+  async function ouvrirHistorique(tache: TacheChambre) {
+    setHistoriqueOuvert(tache)
 
     try {
-      setHistorique(await listerHistoriqueEtatMouvement(mouvement.id))
+      setHistorique(await listerHistoriqueEtatTacheChambre(tache.id))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Historique impossible a charger.')
     }
@@ -138,7 +138,7 @@ export function SuiviOperational() {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-950 sm:text-2xl">Suivi operationnel</h1>
-          <p className="mt-1 text-sm text-slate-500">Avancement des mouvements chambres du jour.</p>
+          <p className="mt-1 text-sm text-slate-500">Avancement des travaux chambres programmes pour cette date.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />
@@ -171,7 +171,7 @@ export function SuiviOperational() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-semibold text-slate-950">{charge.nom}</p>
-                  <p className="text-xs text-slate-500">{charge.totalMouvements} mouvement(s)</p>
+                  <p className="text-xs text-slate-500">{charge.totalTaches} tache(s)</p>
                 </div>
                 {(charge.bloques > 0 || estSurcharge(charge.taux)) && <AlertTriangle className="h-4 w-4 text-rose-700" />}
               </div>
@@ -219,27 +219,30 @@ export function SuiviOperational() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {chargement && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Chargement...</td></tr>}
-              {!chargement && mouvementsFiltres.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Aucun mouvement.</td></tr>}
-              {!chargement && mouvementsPage.map((mouvement) => (
-                <tr key={mouvement.id}>
+              {!chargement && tachesFiltrees.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Aucune tache programmee.</td></tr>}
+              {!chargement && tachesPage.map((tache) => (
+                <tr key={tache.id}>
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-slate-900">{mouvement.lieu?.nom}</p>
-                    <p className="text-xs text-slate-500">{mouvement.lieu?.batiment?.nom}</p>
+                    <p className="font-semibold text-slate-900">{tache.lieu?.nom}</p>
+                    <p className="text-xs text-slate-500">{tache.lieu?.batiment?.nom}</p>
+                    {tache.date_mouvement !== tache.date_execution && (
+                      <p className="mt-1 text-xs text-slate-500">Mouvement hotelier : {formatDate(tache.date_mouvement)}</p>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{mouvement.type_mouvement?.nom} ({mouvement.type_mouvement?.points} pts)</td>
-                  <td className="px-4 py-3 text-slate-700">{mouvement.executant?.nom || 'Non affecte'}</td>
+                  <td className="px-4 py-3 text-slate-700">{tache.type_mouvement?.nom} ({tache.points} pts)</td>
+                  <td className="px-4 py-3 text-slate-700">{tache.executant?.nom || 'Non affecte'}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ring-1 ${couleursEtat[mouvement.etat?.nom || ''] || 'bg-slate-100 text-slate-700 ring-slate-200'}`}>
-                      {mouvement.etat?.nom.replace('_', ' ')}
+                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ring-1 ${couleursEtat[tache.etat?.nom || ''] || 'bg-slate-100 text-slate-700 ring-slate-200'}`}>
+                      {tache.etat?.nom.replace('_', ' ')}
                     </span>
-                    {mouvement.motif_blocage && <p className="mt-1 text-xs text-rose-700">{mouvement.motif_blocage}</p>}
+                    {tache.motif_blocage && <p className="mt-1 text-xs text-rose-700">{tache.motif_blocage}</p>}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <select value={mouvement.id_etat} onChange={(event) => void changerEtat(mouvement, event.target.value)} className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
+                      <select value={tache.id_etat} onChange={(event) => void changerEtat(tache, event.target.value)} className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
                         {etats.map((etat) => <option key={etat.id} value={etat.id}>{etat.nom.replace('_', ' ')}</option>)}
                       </select>
-                      <button type="button" onClick={() => void ouvrirHistorique(mouvement)} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100" aria-label="Historique">
+                      <button type="button" onClick={() => void ouvrirHistorique(tache)} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100" aria-label="Historique">
                         <History className="h-4 w-4" />
                       </button>
                     </div>
@@ -252,7 +255,7 @@ export function SuiviOperational() {
         <PaginationSuivi
           page={page}
           totalPages={totalPages}
-          totalItems={mouvementsFiltres.length}
+          totalItems={tachesFiltrees.length}
           lignesParPage={lignesParPage}
           onPageChange={setPage}
           onLignesParPageChange={(value) => {
@@ -316,7 +319,7 @@ function PaginationSuivi({
   return (
     <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
       <span>
-        {debut}-{fin} sur {totalItems} mouvement{totalItems > 1 ? 's' : ''}
+        {debut}-{fin} sur {totalItems} tache{totalItems > 1 ? 's' : ''}
       </span>
       <div className="flex flex-wrap items-center gap-2">
         <select
@@ -351,49 +354,49 @@ function PaginationSuivi({
   )
 }
 
-function calculerResume(mouvements: PlanningChambre[]) {
+function calculerResume(taches: TacheChambre[]) {
   const parEtat: Record<string, number> = {}
   let pointsTermines = 0
   let points = 0
 
-  mouvements.forEach((mouvement) => {
-    const etat = mouvement.etat?.nom || 'AFFECTE'
-    const pts = mouvement.type_mouvement?.points || 0
+  taches.forEach((tache) => {
+    const etat = tache.etat?.nom || 'AFFECTE'
+    const pts = tache.points || 0
     parEtat[etat] = (parEtat[etat] || 0) + 1
     points += pts
     if (etat === 'TERMINE') pointsTermines += pts
   })
 
   return {
-    total: mouvements.length,
+    total: taches.length,
     parEtat,
     points,
     avancement: points === 0 ? 0 : Math.round((pointsTermines / points) * 100),
   }
 }
 
-function calculerChargesExecutants(mouvements: PlanningChambre[]) {
-  const map = new Map<string, { id: string; nom: string; points: number; capaciteMax: number | null; totalMouvements: number; bloques: number; parEtat: Record<string, number> }>()
+function calculerChargesExecutants(taches: TacheChambre[]) {
+  const map = new Map<string, { id: string; nom: string; points: number; capaciteMax: number | null; totalTaches: number; bloques: number; parEtat: Record<string, number> }>()
 
-  mouvements.forEach((mouvement) => {
-    if (!mouvement.executant) return
+  taches.forEach((tache) => {
+    if (!tache.executant) return
 
-    const charge = map.get(mouvement.executant.id) || {
-      id: mouvement.executant.id,
-      nom: mouvement.executant.nom,
+    const charge = map.get(tache.executant.id) || {
+      id: tache.executant.id,
+      nom: tache.executant.nom,
       points: 0,
-      capaciteMax: mouvement.executant.domaine?.capacite_max ?? null,
-      totalMouvements: 0,
+      capaciteMax: tache.executant.domaine?.capacite_max ?? null,
+      totalTaches: 0,
       bloques: 0,
       parEtat: {},
     }
-    const etat = mouvement.etat?.nom || 'AFFECTE'
+    const etat = tache.etat?.nom || 'AFFECTE'
 
-    charge.points += mouvement.type_mouvement?.points || 0
-    charge.totalMouvements += 1
+    charge.points += tache.points || 0
+    charge.totalTaches += 1
     charge.parEtat[etat] = (charge.parEtat[etat] || 0) + 1
     if (etat === 'BLOQUE') charge.bloques += 1
-    map.set(mouvement.executant.id, charge)
+    map.set(tache.executant.id, charge)
   })
 
   return Array.from(map.values())
@@ -417,6 +420,10 @@ function formatDateInput(date: Date) {
   const mois = String(date.getMonth() + 1).padStart(2, '0')
   const jour = String(date.getDate()).padStart(2, '0')
   return `${annee}-${mois}-${jour}`
+}
+
+function formatDate(date: string) {
+  return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T00:00:00`))
 }
 
 function formatDateHeure(date: string) {
