@@ -145,38 +145,118 @@ export function TravailChambres() {
       .sort((a, b) => a.date_execution.localeCompare(b.date_execution) || a.date_limite.localeCompare(b.date_limite))
   }, [batimentFiltre, etatFiltre, executantFiltre, recherche, taches])
 
-  const tachesParDate = useMemo(() => {
-    const map = new Map<string, TacheChambre[]>()
-    tachesFiltrees.forEach((tache) => {
-      map.set(tache.date_execution, [...(map.get(tache.date_execution) || []), tache])
+  const itemsPlanning = useMemo(() => {
+    const terme = recherche.trim().toLowerCase()
+    const items = [
+      ...taches.map((tache) => ({
+        id: `tache-${tache.id}`,
+        planifie: true,
+        date: tache.date_execution,
+        id_lieu: tache.id_lieu,
+        id_executant: tache.id_executant,
+        id_etat: tache.id_etat,
+        points: tache.points,
+        lieu: tache.lieu || null,
+        type: tache.type_mouvement || null,
+        executant: tache.executant || null,
+        urgence: tache.urgence,
+        dateMouvement: tache.date_mouvement,
+        tache,
+        mouvement: null as PlanningChambre | null,
+      })),
+      ...mouvementsDisponibles.map((mouvement) => ({
+        id: `mouvement-${mouvement.id}`,
+        planifie: false,
+        date: mouvement.date,
+        id_lieu: mouvement.id_lieu,
+        id_executant: mouvement.id_executant,
+        id_etat: mouvement.id_etat,
+        points: mouvement.type_mouvement?.points || 0,
+        lieu: mouvement.lieu || null,
+        type: mouvement.type_mouvement || null,
+        executant: mouvement.executant || null,
+        urgence: urgenceDepuisMouvement(mouvement.date, aujourdHui),
+        dateMouvement: mouvement.date,
+        tache: null as TacheChambre | null,
+        mouvement,
+      })),
+    ]
+
+    return items
+      .filter((item) => item.date >= dateDebut && item.date <= dateFin)
+      .filter((item) => batimentFiltre === 'tous' || item.lieu?.id_batiment === batimentFiltre)
+      .filter((item) => executantFiltre === 'tous' || item.id_executant === executantFiltre)
+      .filter((item) => etatFiltre === 'tous' || item.id_etat === etatFiltre)
+      .filter((item) => {
+        if (!terme) return true
+        return [
+          item.lieu?.nom,
+          item.lieu?.numero,
+          item.lieu?.batiment?.nom,
+          item.type?.nom,
+          item.executant?.nom,
+          item.tache?.commentaire,
+        ].filter(Boolean).join(' ').toLowerCase().includes(terme)
+      })
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.lieu?.nom || '').localeCompare(b.lieu?.nom || ''))
+  }, [aujourdHui, batimentFiltre, dateDebut, dateFin, etatFiltre, executantFiltre, mouvementsDisponibles, recherche, taches])
+
+  const datesPlanning = useMemo(
+    () => Array.from(new Set(itemsPlanning.map((item) => item.date))).sort(),
+    [itemsPlanning],
+  )
+
+  const itemsParCellule = useMemo(() => {
+    const map = new Map<string, typeof itemsPlanning>()
+    itemsPlanning.forEach((item) => {
+      const cle = `${item.id_lieu}-${item.date}`
+      map.set(cle, [...(map.get(cle) || []), item])
     })
-    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-  }, [tachesFiltrees])
+    return map
+  }, [itemsPlanning])
+
+  const chambresPlanning = useMemo(() => {
+    const ids = new Set(itemsPlanning.map((item) => item.id_lieu))
+    return chambres
+      .filter((chambre) => ids.has(chambre.id))
+      .sort((a, b) => (a.batiment?.nom || '').localeCompare(b.batiment?.nom || '') || (a.numero || a.nom).localeCompare(b.numero || b.nom))
+  }, [chambres, itemsPlanning])
+
+  const chambresParBatiment = useMemo(() => {
+    const map = new Map<string, { id: string; nom: string; chambres: Lieu[] }>()
+    chambresPlanning.forEach((chambre) => {
+      const id = chambre.id_batiment || 'sans-batiment'
+      const groupe = map.get(id) || { id, nom: chambre.batiment?.nom || 'Sans batiment', chambres: [] }
+      groupe.chambres.push(chambre)
+      map.set(id, groupe)
+    })
+    return Array.from(map.values()).sort((a, b) => a.nom.localeCompare(b.nom))
+  }, [chambresPlanning])
 
   const chargesParDate = useMemo(() => {
     const map = new Map<string, { points: number; count: number }>()
-    tachesFiltrees.forEach((tache) => {
-      const charge = map.get(tache.date_execution) || { points: 0, count: 0 }
-      charge.points += tache.points
+    itemsPlanning.forEach((item) => {
+      const charge = map.get(item.date) || { points: 0, count: 0 }
+      charge.points += item.points
       charge.count += 1
-      map.set(tache.date_execution, charge)
+      map.set(item.date, charge)
     })
     return map
-  }, [tachesFiltrees])
+  }, [itemsPlanning])
 
   const chargesExecutantsOperationnelles = useMemo(() => {
     const map = new Map<string, { executant: Executant | null; points: number; count: number; capaciteMax: number | null }>()
 
-    tachesFiltrees.forEach((tache) => {
-      const id = tache.id_executant || 'non-affecte'
+    itemsPlanning.forEach((item) => {
+      const id = item.id_executant || 'non-affecte'
       const charge = map.get(id) || {
-        executant: tache.executant || null,
+        executant: item.executant || null,
         points: 0,
         count: 0,
-        capaciteMax: tache.executant?.domaine?.capacite_max ?? null,
+        capaciteMax: item.executant?.domaine?.capacite_max ?? null,
       }
 
-      charge.points += tache.points
+      charge.points += item.points
       charge.count += 1
       map.set(id, charge)
     })
@@ -191,16 +271,16 @@ export function TravailChambres() {
         surcharge: charge.capaciteMax !== null && charge.points > charge.capaciteMax,
       }))
       .sort((a, b) => b.points - a.points || a.nom.localeCompare(b.nom))
-  }, [tachesFiltrees])
+  }, [itemsPlanning])
 
   const chargesBatimentsOperationnelles = useMemo(() => {
     const map = new Map<string, { nom: string; points: number; count: number }>()
 
-    tachesFiltrees.forEach((tache) => {
-      const id = tache.lieu?.id_batiment || 'sans-batiment'
-      const charge = map.get(id) || { nom: tache.lieu?.batiment?.nom || 'Sans batiment', points: 0, count: 0 }
+    itemsPlanning.forEach((item) => {
+      const id = item.lieu?.id_batiment || 'sans-batiment'
+      const charge = map.get(id) || { nom: item.lieu?.batiment?.nom || 'Sans batiment', points: 0, count: 0 }
 
-      charge.points += tache.points
+      charge.points += item.points
       charge.count += 1
       map.set(id, charge)
     })
@@ -208,7 +288,7 @@ export function TravailChambres() {
     return Array.from(map.entries())
       .map(([id, charge]) => ({ id, ...charge }))
       .sort((a, b) => b.points - a.points || a.nom.localeCompare(b.nom))
-  }, [tachesFiltrees])
+  }, [itemsPlanning])
 
   function estExecutantEnTravail(executantId: string | null | undefined, date: string) {
     if (!executantId) return false
@@ -281,6 +361,14 @@ export function TravailChambres() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Suppression impossible.')
     }
+  }
+
+  function remplirDepuisMouvement(mouvement: PlanningChambre) {
+    setIdMouvement(mouvement.id)
+    setDateLimite(mouvement.date)
+    setDateExecution(mouvement.date < aujourdHui ? aujourdHui : mouvement.date)
+    setIdExecutant(mouvement.id_executant || mouvement.lieu?.batiment?.id_executant_defaut || '')
+    setUrgence(urgenceDepuisMouvement(mouvement.date, aujourdHui))
   }
 
   return (
@@ -445,77 +533,86 @@ export function TravailChambres() {
             </div>
           )}
 
-          {!chargement && tachesParDate.length === 0 && (
-            <div className="p-8 text-center text-sm text-slate-500">Aucune tache chambre planifiee sur cette periode.</div>
+          {!chargement && itemsPlanning.length === 0 && (
+            <div className="p-8 text-center text-sm text-slate-500">Aucun travail chambre trouve sur cette periode.</div>
           )}
 
-          {!chargement && tachesParDate.length > 0 && (
-            <div className="divide-y divide-slate-200">
-              {tachesParDate.map(([date, items]) => {
-                const charge = chargesParDate.get(date)
-                return (
-                  <section key={date} className="p-4">
-                    <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h2 className="font-semibold text-slate-950">{formatDate(date)}</h2>
-                        <p className="text-xs text-slate-500">{charge?.count || 0} tache(s), {charge?.points || 0} point(s)</p>
-                      </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                      <table className="min-w-[980px] w-full text-sm">
-                        <thead className="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-500">
-                          <tr>
-                            <th className="px-3 py-2">Chambre</th>
-                            <th className="px-3 py-2">Mouvement</th>
-                            <th className="px-3 py-2">Execution</th>
-                            <th className="px-3 py-2">Limite</th>
-                            <th className="px-3 py-2">Executant</th>
-                            <th className="px-3 py-2">Etat</th>
-                            <th className="px-3 py-2">Urgence</th>
-                            <th className="px-3 py-2 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {items.map((tache) => (
-                            <tr key={tache.id} className="hover:bg-slate-50">
-                              <td className="px-3 py-3">
-                                <p className="font-medium text-slate-900">{tache.lieu?.nom || 'Chambre'}</p>
-                                <p className="text-xs text-slate-500">{tache.lieu?.batiment?.nom || '-'}</p>
+          {!chargement && itemsPlanning.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="min-w-[980px] w-full border-collapse text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="sticky left-0 z-10 w-56 border-b border-r border-slate-200 bg-slate-50 px-3 py-3 text-left font-semibold text-slate-600">Chambre</th>
+                    {datesPlanning.map((date) => {
+                      const charge = chargesParDate.get(date)
+                      return (
+                        <th key={date} className="min-w-40 border-b border-slate-200 px-3 py-3 text-left font-semibold text-slate-600">
+                          {formatDate(date)}
+                          <span className="mt-1 block text-xs font-normal text-slate-500">{charge?.count || 0} tache(s), {charge?.points || 0} pt</span>
+                        </th>
+                      )
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {chambresParBatiment.map((groupe) => (
+                    <Fragment key={groupe.id}>
+                      <tr className="border-b border-slate-200 bg-slate-100">
+                        <td colSpan={datesPlanning.length + 1} className="sticky left-0 px-3 py-2 text-xs font-bold uppercase text-slate-600">
+                          {groupe.nom} - {groupe.chambres.length} chambre(s)
+                        </td>
+                      </tr>
+                      {groupe.chambres.map((chambre) => (
+                        <tr key={chambre.id} className="border-b border-slate-100">
+                          <th className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-3 text-left align-top">
+                            <span className="block font-semibold text-slate-900">{chambre.nom}</span>
+                            <span className="text-xs font-normal text-slate-500">{chambre.batiment?.nom || '-'}</span>
+                          </th>
+                          {datesPlanning.map((date) => {
+                            const items = itemsParCellule.get(`${chambre.id}-${date}`) || []
+                            return (
+                              <td key={`${chambre.id}-${date}`} className="min-w-40 border-r border-slate-100 p-2 align-top">
+                                {items.length === 0 ? (
+                                  <div className="flex min-h-24 items-center justify-center rounded-md bg-slate-50 text-slate-300">-</div>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {items.map((item) => (
+                                      <div key={item.id} className={item.planifie ? 'rounded-md border border-teal-200 bg-teal-50 p-2' : 'rounded-md border border-amber-200 bg-amber-50 p-2'}>
+                                        <div className="mb-2 flex flex-wrap items-center gap-1">
+                                          <Badge tone={item.planifie ? 'green' : 'orange'}>{item.planifie ? 'Programme' : 'Non programme'}</Badge>
+                                          <Badge tone={couleurUrgence(item.urgence)}>{libelleUrgence(item.urgence)}</Badge>
+                                        </div>
+                                        <p className="text-xs font-semibold text-slate-900">{item.type?.nom || 'Mouvement'} ({item.points} pt)</p>
+                                        <p className="mt-1 truncate text-xs text-slate-600">{item.executant?.nom || 'Non affecte'}</p>
+                                        {item.dateMouvement !== item.date && <p className="mt-1 text-xs text-slate-500">Mouvement : {formatDate(item.dateMouvement)}</p>}
+                                        {item.tache && (
+                                          <div className="mt-2 flex items-center gap-2">
+                                            <select value={item.tache.id_etat} onChange={(event) => void mettreAJourTache(item.tache!.id, { id_etat: event.target.value })} className="h-8 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 text-xs">
+                                              {etats.map((etat) => <option key={etat.id} value={etat.id}>{libelleEtat(etat.nom)}</option>)}
+                                            </select>
+                                            <button type="button" onClick={() => void supprimer(item.tache!.id)} className={dangerButton} aria-label="Supprimer">
+                                              <Trash2 className="h-4 w-4" />
+                                            </button>
+                                          </div>
+                                        )}
+                                        {item.mouvement && (
+                                          <button type="button" onClick={() => remplirDepuisMouvement(item.mouvement!)} className="mt-2 w-full rounded-md bg-amber-700 px-2 py-1.5 text-xs font-semibold text-white hover:bg-amber-800">
+                                            Programmer
+                                          </button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
                               </td>
-                              <td className="px-3 py-3 text-slate-600">
-                                <p>{tache.type_mouvement?.nom || '-'}</p>
-                                <p className="text-xs">{formatDate(tache.date_mouvement)} - {tache.points} pt</p>
-                              </td>
-                              <td className="px-3 py-3">
-                                <input type="date" value={tache.date_execution} onChange={(event) => void mettreAJourTache(tache.id, { date_execution: event.target.value })} className={inputClass} />
-                              </td>
-                              <td className="px-3 py-3 text-slate-600">{formatDate(tache.date_limite)}</td>
-                              <td className="px-3 py-3">
-                                <select value={tache.id_executant || ''} onChange={(event) => void mettreAJourTache(tache.id, { id_executant: event.target.value || null })} className={inputClass}>
-                                  <option value="">Non affecte</option>
-                                  {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
-                                </select>
-                              </td>
-                              <td className="px-3 py-3">
-                                <select value={tache.id_etat} onChange={(event) => void mettreAJourTache(tache.id, { id_etat: event.target.value })} className={inputClass}>
-                                  {etats.map((etat) => <option key={etat.id} value={etat.id}>{libelleEtat(etat.nom)}</option>)}
-                                </select>
-                              </td>
-                              <td className="px-3 py-3"><Badge tone={couleurUrgence(tache.urgence)}>{libelleUrgence(tache.urgence)}</Badge></td>
-                              <td className="px-3 py-3 text-right">
-                                <button type="button" onClick={() => void supprimer(tache.id)} className={dangerButton} aria-label="Supprimer">
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
-                )
-              })}
+                            )
+                          })}
+                        </tr>
+                      ))}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

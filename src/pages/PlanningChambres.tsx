@@ -3,7 +3,6 @@ import { AlertTriangle, BedDouble, CalendarDays, ChevronLeft, ChevronRight, Maxi
 import { toast } from 'sonner'
 import type { Lieu } from '../api/lieux'
 import type { ChargeExecutant, PlanningChambre, PlanningChambrePayload } from '../api/planningChambre'
-import { listerTachesChambres, type TacheChambre } from '../api/tachesChambres'
 import { useAuth } from '../hooks/useAuth'
 import { type SuggestionAffectation, usePlanningChambre } from '../hooks/usePlanningChambre'
 
@@ -40,7 +39,6 @@ export function PlanningChambres() {
   const [lignesParPage, setLignesParPage] = useState(15)
   const [panneauSaisieOuvert, setPanneauSaisieOuvert] = useState(false)
   const [modeGrandAngle, setModeGrandAngle] = useState(false)
-  const [tachesOperationnelles, setTachesOperationnelles] = useState<TacheChambre[]>([])
   const { estAdmin, peutAccederAuDomaine } = useAuth()
 
   const aujourdHui = formatDateInput(new Date())
@@ -111,56 +109,6 @@ export function PlanningChambres() {
 
     return Array.from(map.values()).sort((a, b) => a.nom.localeCompare(b.nom))
   }, [planning])
-  const datesOperationnelles = useMemo(
-    () => Array.from(new Set(tachesOperationnelles.map((tache) => tache.date_execution))).sort(),
-    [tachesOperationnelles],
-  )
-  const chargesExecutantsOperationnelles = useMemo(() => {
-    return executants.map((executant) => {
-      const tachesExecutant = tachesOperationnelles.filter((tache) => tache.id_executant === executant.id)
-      const capaciteMax = executant.domaine?.capacite_max ?? null
-      const pointsParDate = datesOperationnelles.map((date) => {
-        const points = tachesExecutant
-          .filter((tache) => tache.date_execution === date)
-          .reduce((total, tache) => total + tache.points, 0)
-        const taux = capaciteMax ? points / capaciteMax : null
-
-        return {
-          date,
-          points,
-          taux,
-          surcharge: capaciteMax !== null && points > capaciteMax,
-        }
-      }).filter((jour) => jour.points > 0)
-      const pic = pointsParDate.reduce((max, jour) => Math.max(max, jour.points), 0)
-      const taux = capaciteMax ? pic / capaciteMax : null
-
-      return {
-        executant,
-        points: pic,
-        capaciteMax,
-        taux,
-        surcharge: pointsParDate.some((jour) => jour.surcharge),
-        pointsParDate,
-      }
-    }).filter((charge) => charge.points > 0)
-  }, [datesOperationnelles, executants, tachesOperationnelles])
-  const chargesBatimentsOperationnelles = useMemo(() => {
-    const map = new Map<string, { id: string; nom: string; pointsParDate: Map<string, number>; total: number }>()
-
-    tachesOperationnelles.forEach((tache) => {
-      const batiment = tache.lieu?.batiment
-      const id = batiment?.id || 'sans-batiment'
-      const nom = batiment?.nom || 'Sans batiment'
-      const charge = map.get(id) || { id, nom, pointsParDate: new Map<string, number>(), total: 0 }
-
-      charge.pointsParDate.set(tache.date_execution, (charge.pointsParDate.get(tache.date_execution) || 0) + tache.points)
-      charge.total += tache.points
-      map.set(id, charge)
-    })
-
-    return Array.from(map.values()).sort((a, b) => a.nom.localeCompare(b.nom))
-  }, [tachesOperationnelles])
   const propositionsEnAttente = payloadsEnAttente.length > 0 || reaffectationsEnAttente.length > 0
   const payloadsProposition = payloadsEnAttente.length > 0 ? payloadsEnAttente : reaffectationsEnAttente.map((item) => item.payload)
   const reaffectationsSelectionnees = reaffectationsEnAttente.filter((item) => item.payload.id_executant !== item.mouvement.id_executant)
@@ -194,24 +142,6 @@ export function PlanningChambres() {
       setPagePlanning(totalPagesPlanning)
     }
   }, [pagePlanning, totalPagesPlanning])
-
-  useEffect(() => {
-    let actif = true
-
-    async function chargerTachesOperationnelles() {
-      try {
-        const resultat = await listerTachesChambres(aujourdHui, ajouterJours(aujourdHui, 120))
-        if (actif) setTachesOperationnelles(resultat)
-      } catch {
-        if (actif) setTachesOperationnelles([])
-      }
-    }
-
-    void chargerTachesOperationnelles()
-    return () => {
-      actif = false
-    }
-  }, [aujourdHui])
 
   function basculerChambre(id: string, coche: boolean) {
     setChambresSelectionnees((selection) => (coche ? Array.from(new Set([...selection, id])) : selection.filter((item) => item !== id)))
@@ -572,9 +502,7 @@ export function PlanningChambres() {
 
         <main className="min-w-0 space-y-4">
           <ChargeExecutants charges={charges} peutModifier={peutModifier} onProposerReaffectation={proposerReaffectation} />
-          <ChargeExecutantsOperationnelles charges={chargesExecutantsOperationnelles} />
-          <ChargeBatiments title="Charge hoteliere des batiments" subtitle="Selon la date du mouvement" charges={chargesBatiments} dates={datesVisibles} />
-          <ChargeBatiments title="Charge operationnelle des batiments" subtitle="Selon la date execution des taches" charges={chargesBatimentsOperationnelles} dates={datesOperationnelles} />
+          <ChargeBatiments charges={chargesBatiments} dates={datesVisibles} />
 
           <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 p-4">
@@ -601,7 +529,7 @@ export function PlanningChambres() {
                     {datesVisibles.map((date, index) => (
                       <th key={date} className="border-b border-slate-200 px-3 py-3 text-left font-semibold text-slate-600">
                         {joursLabels[new Date(`${date}T00:00:00`).getDay()]} <span className="block text-xs font-normal text-slate-500">{formatDateCourte(date)}</span>
-                        <span className="mt-1 block text-xs text-teal-700">Hotelier: {mouvementsParJour[index].reduce((total, mouvement) => total + (mouvement.type_mouvement?.points || 0), 0)} pts</span>
+                        <span className="mt-1 block text-xs text-teal-700">{mouvementsParJour[index].reduce((total, mouvement) => total + (mouvement.type_mouvement?.points || 0), 0)} pts</span>
                       </th>
                     ))}
                   </tr>
@@ -880,10 +808,7 @@ function ChargeExecutants({
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="font-semibold text-slate-950">Charge hoteliere des executants</h2>
-          <p className="text-xs text-slate-500">Selon la date du mouvement</p>
-        </div>
+        <h2 className="font-semibold text-slate-950">Charge des executants</h2>
         <span className="text-xs font-semibold uppercase text-slate-500">
           {charges.filter((charge) => charge.surcharge).length} surcharge(s)
         </span>
@@ -939,87 +864,17 @@ function ChargeExecutants({
   )
 }
 
-function ChargeExecutantsOperationnelles({
-  charges,
-}: {
-  charges: Array<{
-    executant: ChargeExecutant['executant']
-    points: number
-    capaciteMax: number | null
-    taux: number | null
-    surcharge: boolean
-    pointsParDate: Array<{ date: string; points: number; taux: number | null; surcharge: boolean }>
-  }>
-}) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="font-semibold text-slate-950">Charge operationnelle des executants</h2>
-          <p className="text-xs text-slate-500">Selon la date execution des taches</p>
-        </div>
-        <span className="text-xs font-semibold uppercase text-slate-500">
-          {charges.filter((charge) => charge.surcharge).length} surcharge(s)
-        </span>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-        {charges.length === 0 && <p className="text-sm text-slate-500">Aucune tache operationnelle planifiee.</p>}
-        {charges.map((charge) => {
-          const capacite = charge.capaciteMax === null ? 'infini' : charge.capaciteMax
-          const taux = charge.taux === null ? null : Math.min(charge.taux * 100, 100)
-
-          return (
-            <div key={charge.executant.id} className={charge.surcharge ? 'rounded-md border border-rose-200 bg-rose-50 p-3' : 'rounded-md border border-slate-200 p-3'}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold text-slate-900">{charge.executant.nom}</p>
-                  <p className="text-xs text-slate-500">{charge.executant.domaine?.nom}</p>
-                </div>
-                <span className={charge.surcharge ? 'shrink-0 text-sm font-semibold text-rose-700' : 'shrink-0 text-sm font-semibold text-slate-600'}>
-                  {charge.points}/{capacite} pts
-                </span>
-              </div>
-              {taux !== null && (
-                <div className="mt-3 h-2 rounded-full bg-white">
-                  <div className={charge.surcharge ? 'h-2 rounded-full bg-rose-600' : 'h-2 rounded-full bg-teal-600'} style={{ width: `${taux}%` }} />
-                </div>
-              )}
-              {charge.pointsParDate.length > 0 && (
-                <div className="mt-3 space-y-1">
-                  {charge.pointsParDate.map((jour) => (
-                    <div key={jour.date} className={jour.surcharge ? 'rounded-md bg-white px-2 py-1 text-xs text-rose-700' : 'rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-600'}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span>{formatDateCourte(jour.date)}</span>
-                        <span className="font-semibold">{jour.points}/{capacite} pts</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
 function ChargeBatiments({
-  title,
-  subtitle,
   charges,
   dates,
 }: {
-  title: string
-  subtitle: string
   charges: Array<{ id: string; nom: string; pointsParDate: Map<string, number>; total: number }>
   dates: string[]
 }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 px-4 py-3">
-        <h2 className="font-semibold text-slate-950">{title}</h2>
-        <p className="text-xs text-slate-500">{subtitle}</p>
+        <h2 className="font-semibold text-slate-950">Charge des batiments</h2>
       </div>
       <div className="overflow-x-auto">
         <table className="min-w-[720px] w-full border-collapse text-sm">
@@ -1124,12 +979,6 @@ function formatDateInput(date: Date) {
   const mois = String(date.getMonth() + 1).padStart(2, '0')
   const jour = String(date.getDate()).padStart(2, '0')
   return `${annee}-${mois}-${jour}`
-}
-
-function ajouterJours(date: string, jours: number) {
-  const valeur = new Date(`${date}T00:00:00`)
-  valeur.setDate(valeur.getDate() + jours)
-  return formatDateInput(valeur)
 }
 
 function formatDateCourte(date: string) {
