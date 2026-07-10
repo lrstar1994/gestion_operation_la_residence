@@ -164,6 +164,52 @@ export function TravailChambres() {
     return map
   }, [tachesFiltrees])
 
+  const chargesExecutantsOperationnelles = useMemo(() => {
+    const map = new Map<string, { executant: Executant | null; points: number; count: number; capaciteMax: number | null }>()
+
+    tachesFiltrees.forEach((tache) => {
+      const id = tache.id_executant || 'non-affecte'
+      const charge = map.get(id) || {
+        executant: tache.executant || null,
+        points: 0,
+        count: 0,
+        capaciteMax: tache.executant?.domaine?.capacite_max ?? null,
+      }
+
+      charge.points += tache.points
+      charge.count += 1
+      map.set(id, charge)
+    })
+
+    return Array.from(map.entries())
+      .map(([id, charge]) => ({
+        id,
+        nom: charge.executant?.nom || 'Non affecte',
+        points: charge.points,
+        count: charge.count,
+        capaciteMax: charge.capaciteMax,
+        surcharge: charge.capaciteMax !== null && charge.points > charge.capaciteMax,
+      }))
+      .sort((a, b) => b.points - a.points || a.nom.localeCompare(b.nom))
+  }, [tachesFiltrees])
+
+  const chargesBatimentsOperationnelles = useMemo(() => {
+    const map = new Map<string, { nom: string; points: number; count: number }>()
+
+    tachesFiltrees.forEach((tache) => {
+      const id = tache.lieu?.id_batiment || 'sans-batiment'
+      const charge = map.get(id) || { nom: tache.lieu?.batiment?.nom || 'Sans batiment', points: 0, count: 0 }
+
+      charge.points += tache.points
+      charge.count += 1
+      map.set(id, charge)
+    })
+
+    return Array.from(map.entries())
+      .map(([id, charge]) => ({ id, ...charge }))
+      .sort((a, b) => b.points - a.points || a.nom.localeCompare(b.nom))
+  }, [tachesFiltrees])
+
   function estExecutantEnTravail(executantId: string | null | undefined, date: string) {
     if (!executantId) return false
     return planningExecutants.some(
@@ -336,6 +382,60 @@ export function TravailChambres() {
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input value={recherche} onChange={(event) => setRecherche(event.target.value)} placeholder="Rechercher..." className={`${inputClass} pl-9`} />
             </label>
+          </div>
+
+          <div className="grid gap-4 border-b border-slate-200 p-4 xl:grid-cols-2">
+            <section>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="font-semibold text-slate-950">Charge operationnelle par executant</h2>
+                <span className="text-xs text-slate-500">Selon date execution</span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {chargesExecutantsOperationnelles.length === 0 && <p className="text-sm text-slate-500">Aucune charge.</p>}
+                {chargesExecutantsOperationnelles.map((charge) => (
+                  <div key={charge.id} className="rounded-md border border-slate-200 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-slate-900">{charge.nom}</p>
+                        <p className="text-xs text-slate-500">{charge.count} tache(s)</p>
+                      </div>
+                      <Badge tone={charge.surcharge ? 'red' : 'slate'}>
+                        {charge.points}{charge.capaciteMax !== null ? ` / ${charge.capaciteMax}` : ''} pt
+                      </Badge>
+                    </div>
+                    {charge.capaciteMax !== null && (
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className={charge.surcharge ? 'h-full bg-rose-600' : 'h-full bg-teal-600'}
+                          style={{ width: `${Math.min(100, (charge.points / charge.capaciteMax) * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="font-semibold text-slate-950">Charge operationnelle par batiment</h2>
+                <span className="text-xs text-slate-500">Selon date execution</span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {chargesBatimentsOperationnelles.length === 0 && <p className="text-sm text-slate-500">Aucune charge.</p>}
+                {chargesBatimentsOperationnelles.map((charge) => (
+                  <div key={charge.id} className="rounded-md border border-slate-200 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold text-slate-900">{charge.nom}</p>
+                        <p className="text-xs text-slate-500">{charge.count} tache(s)</p>
+                      </div>
+                      <Badge tone="slate">{charge.points} pt</Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
 
           {chargement && (
