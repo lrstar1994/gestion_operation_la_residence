@@ -286,22 +286,32 @@ export function TravailChambres() {
   }, [itemsPlanning])
 
   const chargesExecutantsOperationnelles = useMemo(() => {
-    const map = new Map<string, { executant: Executant | null; points: number; count: number; capaciteMax: number | null; pointsParDate: Map<string, number> }>()
+    const map = new Map<string, { executant: Executant; points: number; capaciteMax: number | null; pointsParDate: Map<string, number> }>()
+
+    executants
+      .filter((executant) => estFemmeDeChambre(executant))
+      .forEach((executant) => {
+        map.set(executant.id, {
+          executant,
+          points: 0,
+          capaciteMax: executant.domaine?.capacite_max ?? null,
+          pointsParDate: new Map<string, number>(),
+        })
+      })
 
     itemsPlanning.forEach((item) => {
-      const id = item.id_executant || 'non-affecte'
-      const charge = map.get(id) || {
-        executant: item.executant || null,
+      if (!item.id_executant || !item.executant || !estFemmeDeChambre(item.executant)) return
+
+      const charge = map.get(item.id_executant) || {
+        executant: item.executant,
         points: 0,
-        count: 0,
         capaciteMax: item.executant?.domaine?.capacite_max ?? null,
         pointsParDate: new Map<string, number>(),
       }
 
       charge.points += item.points
-      charge.count += 1
       charge.pointsParDate.set(item.date, (charge.pointsParDate.get(item.date) || 0) + item.points)
-      map.set(id, charge)
+      map.set(item.id_executant, charge)
     })
 
     return Array.from(map.entries())
@@ -318,8 +328,8 @@ export function TravailChambres() {
 
         return {
           id,
-          nom: charge.executant?.nom || 'Non affecte',
-          domaine: charge.executant?.domaine?.nom || 'Aucun domaine',
+          nom: charge.executant.nom,
+          domaine: charge.executant.domaine?.nom || 'Aucun domaine',
           points: picJournalier,
           capaciteMax: charge.capaciteMax,
           taux: charge.capaciteMax === null ? null : picJournalier / charge.capaciteMax,
@@ -328,7 +338,7 @@ export function TravailChambres() {
         }
       })
       .sort((a, b) => b.points - a.points || a.nom.localeCompare(b.nom))
-  }, [datesPlanning, itemsPlanning])
+  }, [datesPlanning, executants, itemsPlanning])
 
   const chargesBatimentsOperationnelles = useMemo(() => {
     const map = new Map<string, { nom: string; pointsParDate: Map<string, number>; total: number }>()
@@ -868,6 +878,11 @@ function estMouvementProgrammable(type?: string | null) {
   return nom.includes('DEPART') || nom.includes('ARRIVEE')
 }
 
+function estFemmeDeChambre(executant: Executant) {
+  const domaine = normaliserTexte(executant.domaine?.nom || '')
+  return domaine.includes('femme de chambre') || domaine.includes('chambre')
+}
+
 function couleurUrgence(urgence: UrgenceTacheChambre): 'red' | 'orange' | 'green' | 'slate' {
   if (urgence === 'haute') return 'red'
   if (urgence === 'normale') return 'orange'
@@ -886,6 +901,10 @@ function differenceJours(debut: string, fin: string) {
   const a = new Date(`${debut}T00:00:00`).getTime()
   const b = new Date(`${fin}T00:00:00`).getTime()
   return Math.round((b - a) / 86400000)
+}
+
+function normaliserTexte(valeur: string) {
+  return valeur.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
 
 function couleurBarreCharge(taux: number, surcharge: boolean) {
