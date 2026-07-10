@@ -22,6 +22,37 @@ import {
 } from '../api/tachesChambres'
 
 const urgences: UrgenceTacheChambre[] = ['haute', 'normale', 'basse']
+const joursLabels = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
+
+type ItemPlanningTravail = {
+  id: string
+  planifie: boolean
+  date: string
+  id_lieu: string
+  id_executant: string | null
+  id_etat: string
+  points: number
+  lieu: Lieu | null
+  type: PlanningChambre['type_mouvement'] | null
+  executant: Executant | null
+  urgence: UrgenceTacheChambre
+  dateMouvement: string
+  tache: TacheChambre | null
+  mouvement: PlanningChambre | null
+}
+
+type ChargeExecutantTravail = {
+  id: string
+  nom: string
+  domaine: string
+  points: number
+  total: number
+  count: number
+  capaciteMax: number | null
+  taux: number | null
+  surcharge: boolean
+  pointsParDate: Array<{ date: string; points: number; surcharge: boolean }>
+}
 
 export function TravailChambres() {
   const aujourdHui = formatDateInput(new Date())
@@ -47,6 +78,13 @@ export function TravailChambres() {
   const [idExecutant, setIdExecutant] = useState('')
   const [urgence, setUrgence] = useState<UrgenceTacheChambre>('normale')
   const [commentaire, setCommentaire] = useState('')
+  const [modalItem, setModalItem] = useState<ItemPlanningTravail | null>(null)
+  const [modalDateExecution, setModalDateExecution] = useState('')
+  const [modalDateLimite, setModalDateLimite] = useState('')
+  const [modalExecutant, setModalExecutant] = useState('')
+  const [modalEtat, setModalEtat] = useState('')
+  const [modalUrgence, setModalUrgence] = useState<UrgenceTacheChambre>('normale')
+  const [modalCommentaire, setModalCommentaire] = useState('')
 
   const etatAffecte = etats.find((etat) => etat.nom === 'AFFECTE') || etats[0]
 
@@ -110,6 +148,7 @@ export function TravailChambres() {
     return mouvements
       .filter((mouvement) => !mouvementsDejaPlanifies.has(mouvement.id))
       .filter((mouvement) => mouvement.etat?.nom !== 'TERMINE')
+      .filter((mouvement) => estMouvementProgrammable(mouvement.type_mouvement?.nom))
       .sort((a, b) => a.date.localeCompare(b.date) || (a.lieu?.nom || '').localeCompare(b.lieu?.nom || ''))
   }, [mouvements, mouvementsDejaPlanifies])
 
@@ -147,7 +186,7 @@ export function TravailChambres() {
 
   const itemsPlanning = useMemo(() => {
     const terme = recherche.trim().toLowerCase()
-    const items = [
+    const items: ItemPlanningTravail[] = [
       ...taches.map((tache) => ({
         id: `tache-${tache.id}`,
         planifie: true,
@@ -164,7 +203,10 @@ export function TravailChambres() {
         tache,
         mouvement: null as PlanningChambre | null,
       })),
-      ...mouvementsDisponibles.map((mouvement) => ({
+      ...mouvements
+        .filter((mouvement) => !mouvementsDejaPlanifies.has(mouvement.id))
+        .filter((mouvement) => mouvement.etat?.nom !== 'TERMINE')
+        .map((mouvement) => ({
         id: `mouvement-${mouvement.id}`,
         planifie: false,
         date: mouvement.date,
@@ -199,7 +241,7 @@ export function TravailChambres() {
         ].filter(Boolean).join(' ').toLowerCase().includes(terme)
       })
       .sort((a, b) => a.date.localeCompare(b.date) || (a.lieu?.nom || '').localeCompare(b.lieu?.nom || ''))
-  }, [aujourdHui, batimentFiltre, dateDebut, dateFin, etatFiltre, executantFiltre, mouvementsDisponibles, recherche, taches])
+  }, [aujourdHui, batimentFiltre, dateDebut, dateFin, etatFiltre, executantFiltre, mouvements, mouvementsDejaPlanifies, recherche, taches])
 
   const datesPlanning = useMemo(
     () => Array.from(new Set(itemsPlanning.map((item) => item.date))).sort(),
@@ -245,7 +287,7 @@ export function TravailChambres() {
   }, [itemsPlanning])
 
   const chargesExecutantsOperationnelles = useMemo(() => {
-    const map = new Map<string, { executant: Executant | null; points: number; count: number; capaciteMax: number | null }>()
+    const map = new Map<string, { executant: Executant | null; points: number; count: number; capaciteMax: number | null; pointsParDate: Map<string, number> }>()
 
     itemsPlanning.forEach((item) => {
       const id = item.id_executant || 'non-affecte'
@@ -254,40 +296,58 @@ export function TravailChambres() {
         points: 0,
         count: 0,
         capaciteMax: item.executant?.domaine?.capacite_max ?? null,
+        pointsParDate: new Map<string, number>(),
       }
 
       charge.points += item.points
       charge.count += 1
+      charge.pointsParDate.set(item.date, (charge.pointsParDate.get(item.date) || 0) + item.points)
       map.set(id, charge)
     })
 
     return Array.from(map.entries())
-      .map(([id, charge]) => ({
-        id,
-        nom: charge.executant?.nom || 'Non affecte',
-        points: charge.points,
-        count: charge.count,
-        capaciteMax: charge.capaciteMax,
-        surcharge: charge.capaciteMax !== null && charge.points > charge.capaciteMax,
-      }))
+      .map(([id, charge]) => {
+        const pointsParDate = datesPlanning.map((date) => {
+          const points = charge.pointsParDate.get(date) || 0
+          return {
+            date,
+            points,
+            surcharge: charge.capaciteMax !== null && points > charge.capaciteMax,
+          }
+        }).filter((jour) => jour.points > 0)
+        const picJournalier = pointsParDate.reduce((max, jour) => Math.max(max, jour.points), 0)
+
+        return {
+          id,
+          nom: charge.executant?.nom || 'Non affecte',
+          domaine: charge.executant?.domaine?.nom || 'Aucun domaine',
+          points: picJournalier,
+          total: charge.points,
+          count: charge.count,
+          capaciteMax: charge.capaciteMax,
+          taux: charge.capaciteMax === null ? null : picJournalier / charge.capaciteMax,
+          pointsParDate,
+          surcharge: pointsParDate.some((jour) => jour.surcharge),
+        }
+      })
       .sort((a, b) => b.points - a.points || a.nom.localeCompare(b.nom))
-  }, [itemsPlanning])
+  }, [datesPlanning, itemsPlanning])
 
   const chargesBatimentsOperationnelles = useMemo(() => {
-    const map = new Map<string, { nom: string; points: number; count: number }>()
+    const map = new Map<string, { nom: string; pointsParDate: Map<string, number>; total: number }>()
 
     itemsPlanning.forEach((item) => {
       const id = item.lieu?.id_batiment || 'sans-batiment'
-      const charge = map.get(id) || { nom: item.lieu?.batiment?.nom || 'Sans batiment', points: 0, count: 0 }
+      const charge = map.get(id) || { nom: item.lieu?.batiment?.nom || 'Sans batiment', pointsParDate: new Map<string, number>(), total: 0 }
 
-      charge.points += item.points
-      charge.count += 1
+      charge.pointsParDate.set(item.date, (charge.pointsParDate.get(item.date) || 0) + item.points)
+      charge.total += item.points
       map.set(id, charge)
     })
 
     return Array.from(map.entries())
       .map(([id, charge]) => ({ id, ...charge }))
-      .sort((a, b) => b.points - a.points || a.nom.localeCompare(b.nom))
+      .sort((a, b) => b.total - a.total || a.nom.localeCompare(b.nom))
   }, [itemsPlanning])
 
   function estExecutantEnTravail(executantId: string | null | undefined, date: string) {
@@ -371,6 +431,37 @@ export function TravailChambres() {
     setUrgence(urgenceDepuisMouvement(mouvement.date, aujourdHui))
   }
 
+  function ouvrirModal(item: ItemPlanningTravail) {
+    if (!item.tache) return
+    setModalItem(item)
+    setModalDateExecution(item.tache.date_execution)
+    setModalDateLimite(item.tache.date_limite)
+    setModalExecutant(item.tache.id_executant || '')
+    setModalEtat(item.tache.id_etat)
+    setModalUrgence(item.tache.urgence)
+    setModalCommentaire(item.tache.commentaire || '')
+  }
+
+  async function enregistrerModal(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!modalItem?.tache) return
+
+    if (modalDateExecution > modalDateLimite) {
+      toast.error('La date execution doit etre avant ou egale a la date limite.')
+      return
+    }
+
+    await mettreAJourTache(modalItem.tache.id, {
+      date_execution: modalDateExecution,
+      date_limite: modalDateLimite,
+      id_executant: modalExecutant || null,
+      id_etat: modalEtat,
+      urgence: modalUrgence,
+      commentaire: modalCommentaire.trim() || null,
+    })
+    setModalItem(null)
+  }
+
   return (
     <section className="space-y-5">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -389,234 +480,237 @@ export function TravailChambres() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
-        <aside className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="font-semibold text-slate-950">Planifier depuis un mouvement</h2>
-          <p className="mt-1 text-sm text-slate-500">Le mouvement reste dans le planning chambres, la charge sera portee par la date execution.</p>
+        <aside className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="font-semibold text-slate-950">Planifier depuis un mouvement</h2>
+            <p className="mt-1 text-sm text-slate-500">Le mouvement reste dans le planning chambres, la charge sera portee par la date execution.</p>
 
-          <div className="mt-4 space-y-3">
-            <Champ label="Mouvement hotelier">
-              <select value={idMouvement} onChange={(event) => setIdMouvement(event.target.value)} className={inputClass}>
-                <option value="">Choisir</option>
-                {mouvementsDisponibles.map((mouvement) => (
-                  <option key={mouvement.id} value={mouvement.id}>
-                    {formatDate(mouvement.date)} - {mouvement.lieu?.nom || 'Chambre'} - {mouvement.type_mouvement?.nom || 'Mouvement'}
-                  </option>
-                ))}
-              </select>
-            </Champ>
+            <div className="mt-4 space-y-3">
+              <Champ label="Mouvement hotelier">
+                <select value={idMouvement} onChange={(event) => setIdMouvement(event.target.value)} className={inputClass}>
+                  <option value="">Choisir</option>
+                  {mouvementsDisponibles.map((mouvement) => (
+                    <option key={mouvement.id} value={mouvement.id}>
+                      {formatDate(mouvement.date)} - {mouvement.lieu?.nom || 'Chambre'} - {mouvement.type_mouvement?.nom || 'Mouvement'}
+                    </option>
+                  ))}
+                </select>
+              </Champ>
 
-            {mouvementSelectionne && (
-              <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
-                <p className="font-semibold text-slate-900">{mouvementSelectionne.lieu?.nom}</p>
-                <p>{mouvementSelectionne.type_mouvement?.nom} - {mouvementSelectionne.type_mouvement?.points || 0} point(s)</p>
-                <p>Mouvement le {formatDate(mouvementSelectionne.date)}</p>
+              {mouvementSelectionne && (
+                <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+                  <p className="font-semibold text-slate-900">{mouvementSelectionne.lieu?.nom}</p>
+                  <p>{mouvementSelectionne.type_mouvement?.nom} - {mouvementSelectionne.type_mouvement?.points || 0} point(s)</p>
+                  <p>Mouvement le {formatDate(mouvementSelectionne.date)}</p>
+                </div>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                <Champ label="Date execution">
+                  <input type="date" value={dateExecution} onChange={(event) => setDateExecution(event.target.value)} className={inputClass} />
+                </Champ>
+                <Champ label="Date limite">
+                  <input type="date" value={dateLimite} onChange={(event) => setDateLimite(event.target.value)} className={inputClass} />
+                </Champ>
               </div>
-            )}
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-              <Champ label="Date execution">
-                <input type="date" value={dateExecution} onChange={(event) => setDateExecution(event.target.value)} className={inputClass} />
+              <Champ label="Executant">
+                <select value={idExecutant} onChange={(event) => setIdExecutant(event.target.value)} className={inputClass}>
+                  <option value="">Non affecte</option>
+                  {executants.map((executant) => (
+                    <option key={executant.id} value={executant.id}>
+                      {executant.nom}{estExecutantEnTravail(executant.id, dateExecution) ? '' : ' (pas en travail)'}
+                    </option>
+                  ))}
+                </select>
               </Champ>
-              <Champ label="Date limite">
-                <input type="date" value={dateLimite} onChange={(event) => setDateLimite(event.target.value)} className={inputClass} />
+
+              <Champ label="Urgence">
+                <select value={urgence} onChange={(event) => setUrgence(event.target.value as UrgenceTacheChambre)} className={inputClass}>
+                  {urgences.map((item) => <option key={item} value={item}>{libelleUrgence(item)}</option>)}
+                </select>
               </Champ>
+
+              <Champ label="Commentaire">
+                <textarea value={commentaire} onChange={(event) => setCommentaire(event.target.value)} className={textareaClass} />
+              </Champ>
+
+              <button type="button" disabled={soumission || !idMouvement} onClick={() => void creerDepuisMouvement()} className={primaryButton}>
+                {soumission ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Planifier
+              </button>
             </div>
-
-            <Champ label="Executant">
-              <select value={idExecutant} onChange={(event) => setIdExecutant(event.target.value)} className={inputClass}>
-                <option value="">Non affecte</option>
-                {executants.map((executant) => (
-                  <option key={executant.id} value={executant.id}>
-                    {executant.nom}{estExecutantEnTravail(executant.id, dateExecution) ? '' : ' (pas en travail)'}
-                  </option>
-                ))}
-              </select>
-            </Champ>
-
-            <Champ label="Urgence">
-              <select value={urgence} onChange={(event) => setUrgence(event.target.value as UrgenceTacheChambre)} className={inputClass}>
-                {urgences.map((item) => <option key={item} value={item}>{libelleUrgence(item)}</option>)}
-              </select>
-            </Champ>
-
-            <Champ label="Commentaire">
-              <textarea value={commentaire} onChange={(event) => setCommentaire(event.target.value)} className={textareaClass} />
-            </Champ>
-
-            <button type="button" disabled={soumission || !idMouvement} onClick={() => void creerDepuisMouvement()} className={primaryButton}>
-              {soumission ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Planifier
-            </button>
           </div>
         </aside>
 
-        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-[130px_130px_160px_170px_150px_1fr]">
-            <input type="date" value={dateDebut} onChange={(event) => setDateDebut(event.target.value)} className={inputClass} />
-            <input type="date" value={dateFin} onChange={(event) => setDateFin(event.target.value)} className={inputClass} />
-            <select value={batimentFiltre} onChange={(event) => setBatimentFiltre(event.target.value)} className={inputClass}>
-              <option value="tous">Tous batiments</option>
-              {batiments.map((batiment) => <option key={batiment.id} value={batiment.id}>{batiment.nom}</option>)}
-            </select>
-            <select value={executantFiltre} onChange={(event) => setExecutantFiltre(event.target.value)} className={inputClass}>
-              <option value="tous">Tous executants</option>
-              {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
-            </select>
-            <select value={etatFiltre} onChange={(event) => setEtatFiltre(event.target.value)} className={inputClass}>
-              <option value="tous">Tous etats</option>
-              {etats.map((etat) => <option key={etat.id} value={etat.id}>{libelleEtat(etat.nom)}</option>)}
-            </select>
-            <label className="relative block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={recherche} onChange={(event) => setRecherche(event.target.value)} placeholder="Rechercher..." className={`${inputClass} pl-9`} />
-            </label>
-          </div>
+        <main className="min-w-0 space-y-4">
+          <ChargeExecutantsOperationnelles charges={chargesExecutantsOperationnelles} />
+          <ChargeBatimentsOperationnelles charges={chargesBatimentsOperationnelles} dates={datesPlanning} />
 
-          <div className="grid gap-4 border-b border-slate-200 p-4 xl:grid-cols-2">
-            <section>
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="font-semibold text-slate-950">Charge operationnelle par executant</h2>
-                <span className="text-xs text-slate-500">Selon date execution</span>
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[130px_130px_160px_170px_150px_1fr]">
+                <input type="date" value={dateDebut} onChange={(event) => setDateDebut(event.target.value)} className={inputClass} />
+                <input type="date" value={dateFin} onChange={(event) => setDateFin(event.target.value)} className={inputClass} />
+                <select value={batimentFiltre} onChange={(event) => setBatimentFiltre(event.target.value)} className={inputClass}>
+                  <option value="tous">Tous batiments</option>
+                  {batiments.map((batiment) => <option key={batiment.id} value={batiment.id}>{batiment.nom}</option>)}
+                </select>
+                <select value={executantFiltre} onChange={(event) => setExecutantFiltre(event.target.value)} className={inputClass}>
+                  <option value="tous">Tous executants</option>
+                  {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
+                </select>
+                <select value={etatFiltre} onChange={(event) => setEtatFiltre(event.target.value)} className={inputClass}>
+                  <option value="tous">Tous etats</option>
+                  {etats.map((etat) => <option key={etat.id} value={etat.id}>{libelleEtat(etat.nom)}</option>)}
+                </select>
+                <label className="relative block">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input value={recherche} onChange={(event) => setRecherche(event.target.value)} placeholder="Chambre, executant..." className={`${inputClass} pl-9`} />
+                </label>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {chargesExecutantsOperationnelles.length === 0 && <p className="text-sm text-slate-500">Aucune charge.</p>}
-                {chargesExecutantsOperationnelles.map((charge) => (
-                  <div key={charge.id} className="rounded-md border border-slate-200 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-slate-900">{charge.nom}</p>
-                        <p className="text-xs text-slate-500">{charge.count} tache(s)</p>
-                      </div>
-                      <Badge tone={charge.surcharge ? 'red' : 'slate'}>
-                        {charge.points}{charge.capaciteMax !== null ? ` / ${charge.capaciteMax}` : ''} pt
-                      </Badge>
-                    </div>
-                    {charge.capaciteMax !== null && (
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className={charge.surcharge ? 'h-full bg-rose-600' : 'h-full bg-teal-600'}
-                          style={{ width: `${Math.min(100, (charge.points / charge.capaciteMax) * 100)}%` }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="font-semibold text-slate-950">Charge operationnelle par batiment</h2>
-                <span className="text-xs text-slate-500">Selon date execution</span>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {chargesBatimentsOperationnelles.length === 0 && <p className="text-sm text-slate-500">Aucune charge.</p>}
-                {chargesBatimentsOperationnelles.map((charge) => (
-                  <div key={charge.id} className="rounded-md border border-slate-200 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-slate-900">{charge.nom}</p>
-                        <p className="text-xs text-slate-500">{charge.count} tache(s)</p>
-                      </div>
-                      <Badge tone="slate">{charge.points} pt</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          {chargement && (
-            <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-500">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Chargement...
             </div>
-          )}
 
-          {!chargement && itemsPlanning.length === 0 && (
-            <div className="p-8 text-center text-sm text-slate-500">Aucun travail chambre trouve sur cette periode.</div>
-          )}
+            {chargement && (
+              <div className="flex items-center justify-center gap-2 p-8 text-sm text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Chargement...
+              </div>
+            )}
 
-          {!chargement && itemsPlanning.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="min-w-[980px] w-full border-collapse text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="sticky left-0 z-10 w-56 border-b border-r border-slate-200 bg-slate-50 px-3 py-3 text-left font-semibold text-slate-600">Chambre</th>
-                    {datesPlanning.map((date) => {
-                      const charge = chargesParDate.get(date)
-                      return (
-                        <th key={date} className="min-w-40 border-b border-slate-200 px-3 py-3 text-left font-semibold text-slate-600">
-                          {formatDate(date)}
-                          <span className="mt-1 block text-xs font-normal text-slate-500">{charge?.count || 0} tache(s), {charge?.points || 0} pt</span>
-                        </th>
-                      )
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {chambresParBatiment.map((groupe) => (
-                    <Fragment key={groupe.id}>
-                      <tr className="border-b border-slate-200 bg-slate-100">
-                        <td colSpan={datesPlanning.length + 1} className="sticky left-0 px-3 py-2 text-xs font-bold uppercase text-slate-600">
-                          {groupe.nom} - {groupe.chambres.length} chambre(s)
-                        </td>
-                      </tr>
-                      {groupe.chambres.map((chambre) => (
-                        <tr key={chambre.id} className="border-b border-slate-100">
-                          <th className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-3 text-left align-top">
-                            <span className="block font-semibold text-slate-900">{chambre.nom}</span>
-                            <span className="text-xs font-normal text-slate-500">{chambre.batiment?.nom || '-'}</span>
+            {!chargement && itemsPlanning.length === 0 && (
+              <div className="p-8 text-center text-sm text-slate-500">Aucun travail chambre trouve sur cette periode.</div>
+            )}
+
+            {!chargement && itemsPlanning.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="min-w-[980px] w-full border-collapse text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="sticky left-0 z-10 w-56 border-b border-r border-slate-200 bg-slate-50 px-3 py-3 text-left font-semibold text-slate-600">Chambre</th>
+                      {datesPlanning.map((date) => {
+                        const charge = chargesParDate.get(date)
+                        return (
+                          <th key={date} className="min-w-40 border-b border-slate-200 px-3 py-3 text-left font-semibold text-slate-600">
+                            {joursLabels[new Date(`${date}T00:00:00`).getDay()]} <span className="block text-xs font-normal text-slate-500">{formatDateCourte(date)}</span>
+                            <span className="mt-1 block text-xs text-teal-700">{charge?.count || 0} travail(aux), {charge?.points || 0} pt</span>
                           </th>
-                          {datesPlanning.map((date) => {
-                            const items = itemsParCellule.get(`${chambre.id}-${date}`) || []
-                            return (
-                              <td key={`${chambre.id}-${date}`} className="min-w-40 border-r border-slate-100 p-2 align-top">
-                                {items.length === 0 ? (
-                                  <div className="flex min-h-24 items-center justify-center rounded-md bg-slate-50 text-slate-300">-</div>
-                                ) : (
-                                  <div className="space-y-2">
-                                    {items.map((item) => (
-                                      <div key={item.id} className={item.planifie ? 'rounded-md border border-teal-200 bg-teal-50 p-2' : 'rounded-md border border-amber-200 bg-amber-50 p-2'}>
-                                        <div className="mb-2 flex flex-wrap items-center gap-1">
-                                          <Badge tone={item.planifie ? 'green' : 'orange'}>{item.planifie ? 'Programme' : 'Non programme'}</Badge>
-                                          <Badge tone={couleurUrgence(item.urgence)}>{libelleUrgence(item.urgence)}</Badge>
-                                        </div>
-                                        <p className="text-xs font-semibold text-slate-900">{item.type?.nom || 'Mouvement'} ({item.points} pt)</p>
-                                        <p className="mt-1 truncate text-xs text-slate-600">{item.executant?.nom || 'Non affecte'}</p>
-                                        {item.dateMouvement !== item.date && <p className="mt-1 text-xs text-slate-500">Mouvement : {formatDate(item.dateMouvement)}</p>}
-                                        {item.tache && (
-                                          <div className="mt-2 flex items-center gap-2">
-                                            <select value={item.tache.id_etat} onChange={(event) => void mettreAJourTache(item.tache!.id, { id_etat: event.target.value })} className="h-8 min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2 text-xs">
-                                              {etats.map((etat) => <option key={etat.id} value={etat.id}>{libelleEtat(etat.nom)}</option>)}
-                                            </select>
-                                            <button type="button" onClick={() => void supprimer(item.tache!.id)} className={dangerButton} aria-label="Supprimer">
-                                              <Trash2 className="h-4 w-4" />
-                                            </button>
-                                          </div>
-                                        )}
-                                        {item.mouvement && (
-                                          <button type="button" onClick={() => remplirDepuisMouvement(item.mouvement!)} className="mt-2 w-full rounded-md bg-amber-700 px-2 py-1.5 text-xs font-semibold text-white hover:bg-amber-800">
-                                            Programmer
-                                          </button>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </td>
-                            )
-                          })}
+                        )
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {chambresParBatiment.map((groupe) => (
+                      <Fragment key={groupe.id}>
+                        <tr className="border-b border-slate-200 bg-slate-100">
+                          <td colSpan={datesPlanning.length + 1} className="sticky left-0 px-3 py-2 text-xs font-bold uppercase text-slate-600">
+                            {groupe.nom} - {groupe.chambres.length} chambre(s)
+                          </td>
                         </tr>
-                      ))}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                        {groupe.chambres.map((chambre) => (
+                          <tr key={chambre.id} className="border-b border-slate-100">
+                            <th className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-3 text-left align-top">
+                              <span className="block font-semibold text-slate-900">{chambre.nom}</span>
+                              <span className="text-xs font-normal text-slate-500">{chambre.batiment?.nom || '-'}</span>
+                            </th>
+                            {datesPlanning.map((date) => {
+                              const items = itemsParCellule.get(`${chambre.id}-${date}`) || []
+                              return (
+                                <td key={`${chambre.id}-${date}`} className="min-w-36 border-r border-slate-100 p-2 align-top">
+                                  {items.length === 0 ? (
+                                    <div className="flex min-h-20 items-center justify-center rounded-md bg-slate-50 text-slate-300">-</div>
+                                  ) : (
+                                    <div className="space-y-2">
+                                      {items.map((item) => (
+                                        <div key={item.id} className={item.planifie ? 'rounded-md border border-teal-200 bg-teal-50 p-2' : 'rounded-md border border-amber-200 bg-amber-50 p-2'}>
+                                          <div className="mb-2 flex flex-wrap items-center gap-1">
+                                            <Badge tone={item.planifie ? 'green' : 'orange'}>{item.planifie ? 'Programme' : 'Non programme'}</Badge>
+                                            <Badge tone={couleurUrgence(item.urgence)}>{libelleUrgence(item.urgence)}</Badge>
+                                          </div>
+                                          <p className="text-xs font-semibold text-slate-900">{item.type?.nom || 'Mouvement'} ({item.points} pt)</p>
+                                          <p className="mt-1 truncate text-xs text-slate-600">{item.executant?.nom || 'Non affecte'}</p>
+                                          {item.dateMouvement !== item.date && <p className="mt-1 text-xs text-slate-500">Mouvement : {formatDate(item.dateMouvement)}</p>}
+                                          {item.tache && (
+                                            <button type="button" onClick={() => ouvrirModal(item)} className="mt-2 w-full rounded-md bg-teal-700 px-2 py-1.5 text-xs font-semibold text-white hover:bg-teal-800">
+                                              Modifier
+                                            </button>
+                                          )}
+                                          {item.mouvement && estMouvementProgrammable(item.mouvement.type_mouvement?.nom) && (
+                                            <button type="button" onClick={() => remplirDepuisMouvement(item.mouvement!)} className="mt-2 w-full rounded-md bg-amber-700 px-2 py-1.5 text-xs font-semibold text-white hover:bg-amber-800">
+                                              Programmer
+                                            </button>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </main>
       </div>
+
+      {modalItem?.tache && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 px-4 py-6">
+          <form onSubmit={enregistrerModal} className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-slate-950">{modalItem.lieu?.nom || 'Chambre'}</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {modalItem.type?.nom || 'Mouvement'} - mouvement le {formatDate(modalItem.dateMouvement)}
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Champ label="Date execution">
+                <input type="date" value={modalDateExecution} onChange={(event) => setModalDateExecution(event.target.value)} className={inputClass} />
+              </Champ>
+              <Champ label="Date limite">
+                <input type="date" value={modalDateLimite} onChange={(event) => setModalDateLimite(event.target.value)} className={inputClass} />
+              </Champ>
+              <Champ label="Executant">
+                <select value={modalExecutant} onChange={(event) => setModalExecutant(event.target.value)} className={inputClass}>
+                  <option value="">Non affecte</option>
+                  {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
+                </select>
+              </Champ>
+              <Champ label="Etat">
+                <select value={modalEtat} onChange={(event) => setModalEtat(event.target.value)} className={inputClass}>
+                  {etats.map((etat) => <option key={etat.id} value={etat.id}>{libelleEtat(etat.nom)}</option>)}
+                </select>
+              </Champ>
+              <Champ label="Urgence">
+                <select value={modalUrgence} onChange={(event) => setModalUrgence(event.target.value as UrgenceTacheChambre)} className={inputClass}>
+                  {urgences.map((item) => <option key={item} value={item}>{libelleUrgence(item)}</option>)}
+                </select>
+              </Champ>
+            </div>
+
+            <div className="mt-3">
+              <Champ label="Commentaire">
+                <textarea value={modalCommentaire} onChange={(event) => setModalCommentaire(event.target.value)} className={textareaClass} />
+              </Champ>
+            </div>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => void supprimer(modalItem.tache!.id).then(() => setModalItem(null))} className="rounded-md border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700">
+                <Trash2 className="mr-2 inline h-4 w-4" />
+                Supprimer
+              </button>
+              <button type="button" onClick={() => setModalItem(null)} className={secondaryButton}>Annuler</button>
+              <button type="submit" className="rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800">Enregistrer</button>
+            </div>
+          </form>
+        </div>
+      )}
     </section>
   )
 }
@@ -635,11 +729,134 @@ function Badge({ tone, children }: { tone: 'red' | 'orange' | 'green' | 'slate';
   return <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1 ${classes[tone]}`}>{children}</span>
 }
 
+function ChargeExecutantsOperationnelles({ charges }: { charges: ChargeExecutantTravail[] }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="font-semibold text-slate-950">Charge des executants</h2>
+          <p className="text-xs text-slate-500">Selon la date d'execution des travaux chambres</p>
+        </div>
+        <span className="text-xs font-semibold uppercase text-slate-500">
+          {charges.filter((charge) => charge.surcharge).length} surcharge(s)
+        </span>
+      </div>
+
+      {charges.length === 0 && <p className="text-sm text-slate-500">Aucune charge.</p>}
+
+      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+        {charges.map((charge) => {
+          const capacite = charge.capaciteMax === null ? 'infini' : charge.capaciteMax
+          const taux = charge.taux === null ? null : Math.min(charge.taux * 100, 100)
+
+          return (
+            <div key={charge.id} className={charge.surcharge ? 'rounded-md border border-rose-200 bg-rose-50 p-3' : 'rounded-md border border-slate-200 p-3'}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-slate-900">{charge.nom}</p>
+                  <p className="text-xs text-slate-500">{charge.domaine}</p>
+                </div>
+                <span className={charge.surcharge ? 'shrink-0 text-sm font-semibold text-rose-700' : 'shrink-0 text-sm font-semibold text-slate-600'}>
+                  {charge.points}/{capacite} pts
+                </span>
+              </div>
+
+              {taux !== null && (
+                <div className="mt-3 h-2 rounded-full bg-white">
+                  <div className={couleurBarreCharge(taux, charge.surcharge)} style={{ width: `${taux}%` }} />
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>{charge.count} travail(aux)</span>
+                <span>Total periode : {charge.total} pts</span>
+              </div>
+
+              {charge.pointsParDate.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  {charge.pointsParDate.map((jour) => (
+                    <div key={jour.date} className={jour.surcharge ? 'rounded-md bg-white px-2 py-1 text-xs text-rose-700' : 'rounded-md bg-slate-50 px-2 py-1 text-xs text-slate-600'}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{formatDateCourte(jour.date)}</span>
+                        <span className="font-semibold">{jour.points}/{capacite} pts</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function ChargeBatimentsOperationnelles({
+  charges,
+  dates,
+}: {
+  charges: Array<{ id: string; nom: string; pointsParDate: Map<string, number>; total: number }>
+  dates: string[]
+}) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <div className="border-b border-slate-200 px-4 py-3">
+        <h2 className="font-semibold text-slate-950">Charge des batiments</h2>
+        <p className="text-xs text-slate-500">Points repartis par date d'execution</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="min-w-[720px] w-full border-collapse text-sm">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="w-48 border-b border-r border-slate-200 px-3 py-3 text-left font-semibold text-slate-600">Batiment</th>
+              {dates.map((date) => (
+                <th key={date} className="border-b border-slate-200 px-3 py-3 text-left font-semibold text-slate-600">
+                  {formatDateCourte(date)}
+                </th>
+              ))}
+              <th className="border-b border-slate-200 px-3 py-3 text-left font-semibold text-slate-600">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dates.length === 0 && (
+              <tr>
+                <td colSpan={3} className="px-4 py-6 text-center text-slate-500">Aucune date a afficher.</td>
+              </tr>
+            )}
+            {dates.length > 0 && charges.length === 0 && (
+              <tr>
+                <td colSpan={dates.length + 2} className="px-4 py-6 text-center text-slate-500">Aucune charge.</td>
+              </tr>
+            )}
+            {dates.length > 0 && charges.map((charge) => (
+              <tr key={charge.id} className="border-b border-slate-100">
+                <th className="border-r border-slate-200 px-3 py-3 text-left font-semibold text-slate-900">{charge.nom}</th>
+                {dates.map((date) => (
+                  <td key={date} className="px-3 py-3 text-slate-600">
+                    {charge.pointsParDate.get(date) || 0} pts
+                  </td>
+                ))}
+                <td className="px-3 py-3 font-semibold text-teal-700">{charge.total} pts</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
 function urgenceDepuisMouvement(dateMouvement: string, aujourdHui: string): UrgenceTacheChambre {
   const jours = differenceJours(aujourdHui, dateMouvement)
   if (jours <= 0) return 'haute'
   if (jours <= 2) return 'normale'
   return 'basse'
+}
+
+function estMouvementProgrammable(type?: string | null) {
+  const nom = type?.toUpperCase() || ''
+  return nom.includes('DEPART') || nom.includes('ARRIVEE')
 }
 
 function couleurUrgence(urgence: UrgenceTacheChambre): 'red' | 'orange' | 'green' | 'slate' {
@@ -662,6 +879,12 @@ function differenceJours(debut: string, fin: string) {
   return Math.round((b - a) / 86400000)
 }
 
+function couleurBarreCharge(taux: number, surcharge: boolean) {
+  if (surcharge) return 'h-2 rounded-full bg-rose-600'
+  if (taux >= 0.9) return 'h-2 rounded-full bg-amber-500'
+  return 'h-2 rounded-full bg-teal-600'
+}
+
 function ajouterJours(date: string, jours: number) {
   const valeur = new Date(`${date}T00:00:00`)
   valeur.setDate(valeur.getDate() + jours)
@@ -670,6 +893,10 @@ function ajouterJours(date: string, jours: number) {
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T00:00:00`))
+}
+
+function formatDateCourte(date: string) {
+  return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit' }).format(new Date(`${date}T00:00:00`))
 }
 
 function formatDateInput(date: Date) {
