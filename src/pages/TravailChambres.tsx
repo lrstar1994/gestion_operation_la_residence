@@ -578,7 +578,8 @@ export function TravailChambres() {
                                             <Badge tone={item.planifie ? 'green' : 'orange'}>{item.planifie ? 'Programme' : 'Non programme'}</Badge>
                                             <Badge tone={couleurUrgence(item.urgence)}>{libelleUrgence(item.urgence)}</Badge>
                                           </div>
-                                          <p className="text-xs font-semibold text-slate-900">{item.type?.nom || 'Mouvement'} ({item.points} pt)</p>
+                                          <p className="text-xs font-semibold text-slate-900">{libelleTravailChambre(item.type?.nom)} ({item.points} pt)</p>
+                                          <p className="mt-1 text-xs text-slate-500">Mouvement hotelier : {item.type?.nom || '-'}</p>
                                           <p className="mt-1 truncate text-xs text-slate-600">{item.executant?.nom || 'Non affecte'}</p>
                                           {item.dateMouvement !== item.date && <p className="mt-1 text-xs text-slate-500">Mouvement : {formatDate(item.dateMouvement)}</p>}
                                           {item.tache && (
@@ -623,22 +624,22 @@ export function TravailChambres() {
             </div>
 
             <div className="space-y-3">
-              <Champ label="Mouvement hotelier">
+              <Champ label="Travail a programmer">
                 <select value={idMouvement} onChange={(event) => setIdMouvement(event.target.value)} className={inputClass}>
                   <option value="">Choisir</option>
                   {mouvementsDisponibles.map((mouvement) => (
                     <option key={mouvement.id} value={mouvement.id}>
-                      {formatDate(mouvement.date)} - {mouvement.lieu?.nom || 'Chambre'} - {mouvement.type_mouvement?.nom || 'Mouvement'}
+                      {libelleTravailChambre(mouvement.type_mouvement?.nom)} - {mouvement.lieu?.nom || 'Chambre'} - mouvement le {formatDate(mouvement.date)}
                     </option>
                   ))}
                 </select>
               </Champ>
 
               {mouvementSelectionne && (
-                <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-900">{mouvementSelectionne.lieu?.nom}</p>
-                  <p>{mouvementSelectionne.type_mouvement?.nom} - {mouvementSelectionne.type_mouvement?.points || 0} point(s)</p>
-                  <p>Mouvement le {formatDate(mouvementSelectionne.date)}</p>
+              <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+                <p className="font-semibold text-slate-900">{mouvementSelectionne.lieu?.nom}</p>
+                <p>{libelleTravailChambre(mouvementSelectionne.type_mouvement?.nom)} - {mouvementSelectionne.type_mouvement?.points || 0} point(s)</p>
+                <p>Mouvement hotelier : {mouvementSelectionne.type_mouvement?.nom || '-'} le {formatDate(mouvementSelectionne.date)}</p>
                 </div>
               )}
 
@@ -692,7 +693,7 @@ export function TravailChambres() {
             <div className="mb-4">
               <h2 className="text-lg font-semibold text-slate-950">{modalItem.lieu?.nom || 'Chambre'}</h2>
               <p className="mt-1 text-sm text-slate-500">
-                {modalItem.type?.nom || 'Mouvement'} - mouvement le {formatDate(modalItem.dateMouvement)}
+                {libelleTravailChambre(modalItem.type?.nom)} - mouvement hotelier le {formatDate(modalItem.dateMouvement)}
               </p>
             </div>
 
@@ -876,6 +877,14 @@ function urgenceDepuisMouvement(dateMouvement: string, aujourdHui: string): Urge
 function estMouvementProgrammable(type?: string | null) {
   const nom = type?.toUpperCase() || ''
   return nom.includes('DEPART') || nom.includes('ARRIVEE')
+}
+
+function libelleTravailChambre(type?: string | null) {
+  const nom = type?.toUpperCase() || ''
+  if (nom.includes('ARRIVEE')) return 'Preparation arrivee'
+  if (nom.includes('DEPART')) return 'Nettoyage depart'
+  if (nom.includes('RECOUCHE')) return 'Recouche / entretien'
+  return type || 'Travail chambre'
 }
 
 function estFemmeDeChambre(executant: Executant) {
