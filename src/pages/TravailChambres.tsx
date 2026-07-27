@@ -52,6 +52,19 @@ type ChargeExecutantTravail = {
   pointsParDate: Array<{ date: string; points: number; surcharge: boolean }>
 }
 
+type ValidationAffectation = {
+  ok: boolean
+  message?: string
+  pointsApres?: number
+  capaciteMax?: number | null
+}
+
+type SuggestionAffectation = {
+  executant: Executant
+  pointsApres: number
+  capaciteMax: number | null
+}
+
 export function TravailChambres() {
   const aujourdHui = formatDateInput(new Date())
   const [dateDebut, setDateDebut] = useState(aujourdHui)
@@ -157,10 +170,13 @@ export function TravailChambres() {
     if (!mouvementSelectionne) return
 
     setDateLimite(mouvementSelectionne.date)
-    setDateExecution(mouvementSelectionne.date < aujourdHui ? aujourdHui : mouvementSelectionne.date)
-    setIdExecutant(mouvementSelectionne.id_executant || mouvementSelectionne.lieu?.batiment?.id_executant_defaut || '')
+    const prochaineDateExecution = mouvementSelectionne.date < aujourdHui ? aujourdHui : mouvementSelectionne.date
+    const executantPropose = mouvementSelectionne.id_executant || mouvementSelectionne.lieu?.batiment?.id_executant_defaut || ''
+
+    setDateExecution(prochaineDateExecution)
+    setIdExecutant(estExecutantEnTravail(executantPropose, prochaineDateExecution) ? executantPropose : '')
     setUrgence(urgenceDepuisMouvement(mouvementSelectionne.date, aujourdHui))
-  }, [aujourdHui, mouvementSelectionne])
+  }, [aujourdHui, mouvementSelectionne, planningExecutants])
 
   const tachesFiltrees = useMemo(() => {
     const terme = recherche.trim().toLowerCase()
@@ -357,6 +373,36 @@ export function TravailChambres() {
       .sort((a, b) => b.total - a.total || a.nom.localeCompare(b.nom))
   }, [itemsPlanning])
 
+  const executantsCreationDisponibles = useMemo(
+    () => executantsDisponiblesPourDate(dateExecution),
+    [dateExecution, executants, planningExecutants],
+  )
+
+  const executantsModalDisponibles = useMemo(
+    () => executantsDisponiblesPourDate(modalDateExecution),
+    [executants, modalDateExecution, planningExecutants],
+  )
+
+  const validationCreation = useMemo(
+    () => verifierAffectation(idExecutant, dateExecution, mouvementSelectionne?.type_mouvement?.points || 0),
+    [dateExecution, idExecutant, mouvementSelectionne, taches, executants, planningExecutants],
+  )
+
+  const suggestionsCreation = useMemo(
+    () => suggestionsAffectation(dateExecution, mouvementSelectionne?.type_mouvement?.points || 0, idExecutant),
+    [dateExecution, idExecutant, mouvementSelectionne, taches, executants, planningExecutants],
+  )
+
+  const validationModal = useMemo(
+    () => verifierAffectation(modalExecutant, modalDateExecution, modalItem?.points || 0, modalItem?.tache?.id),
+    [modalDateExecution, modalExecutant, modalItem, taches, executants, planningExecutants],
+  )
+
+  const suggestionsModal = useMemo(
+    () => suggestionsAffectation(modalDateExecution, modalItem?.points || 0, modalExecutant, modalItem?.tache?.id),
+    [modalDateExecution, modalExecutant, modalItem, taches, executants, planningExecutants],
+  )
+
   function estExecutantEnTravail(executantId: string | null | undefined, date: string) {
     if (!executantId) return false
     return planningExecutants.some(
@@ -367,6 +413,59 @@ export function TravailChambres() {
     )
   }
 
+  function executantsDisponiblesPourDate(date: string) {
+    return executants
+      .filter((executant) => estFemmeDeChambre(executant))
+      .filter((executant) => estExecutantEnTravail(executant.id, date))
+  }
+
+  function chargeExecutantJour(executantId: string, date: string, tacheAExclure?: string) {
+    return taches
+      .filter((tache) => tache.id !== tacheAExclure)
+      .filter((tache) => tache.id_executant === executantId && tache.date_execution === date)
+      .reduce((total, tache) => total + tache.points, 0)
+  }
+
+  function verifierAffectation(executantId: string, date: string, points: number, tacheAExclure?: string): ValidationAffectation {
+    if (!executantId) return { ok: true }
+
+    const executant = executants.find((item) => item.id === executantId)
+    if (!executant || !estFemmeDeChambre(executant)) {
+      return { ok: false, message: 'Choisis une femme de chambre.' }
+    }
+
+    if (!estExecutantEnTravail(executantId, date)) {
+      return { ok: false, message: `${executant.nom} n'est pas planifiee en travail le ${formatDate(date)}.` }
+    }
+
+    const capaciteMax = executant.domaine?.capacite_max ?? null
+    const pointsApres = chargeExecutantJour(executantId, date, tacheAExclure) + points
+    if (capaciteMax !== null && pointsApres > capaciteMax) {
+      return {
+        ok: false,
+        message: `${executant.nom} serait en surcharge le ${formatDate(date)} (${pointsApres}/${capaciteMax} pts).`,
+        pointsApres,
+        capaciteMax,
+      }
+    }
+
+    return { ok: true, pointsApres, capaciteMax }
+  }
+
+  function suggestionsAffectation(date: string, points: number, executantActuel?: string, tacheAExclure?: string): SuggestionAffectation[] {
+    if (!date || points <= 0) return []
+
+    return executantsDisponiblesPourDate(date)
+      .filter((executant) => executant.id !== executantActuel)
+      .map((executant) => {
+        const capaciteMax = executant.domaine?.capacite_max ?? null
+        const pointsApres = chargeExecutantJour(executant.id, date, tacheAExclure) + points
+        return { executant, pointsApres, capaciteMax }
+      })
+      .filter((suggestion) => suggestion.capaciteMax === null || suggestion.pointsApres <= suggestion.capaciteMax * 0.9)
+      .sort((a, b) => a.pointsApres - b.pointsApres || a.executant.nom.localeCompare(b.executant.nom))
+  }
+
   async function creerDepuisMouvement() {
     if (!mouvementSelectionne || !etatAffecte) {
       toast.error('Selectionne un mouvement a planifier.')
@@ -375,6 +474,12 @@ export function TravailChambres() {
 
     if (dateExecution > dateLimite) {
       toast.error('La date execution doit etre avant ou egale a la date limite.')
+      return
+    }
+
+    const validation = verifierAffectation(idExecutant, dateExecution, mouvementSelectionne.type_mouvement?.points || 0)
+    if (!validation.ok) {
+      toast.error(validation.message || 'Affectation impossible.')
       return
     }
 
@@ -432,10 +537,13 @@ export function TravailChambres() {
   }
 
   function remplirDepuisMouvement(mouvement: PlanningChambre) {
+    const prochaineDateExecution = mouvement.date < aujourdHui ? aujourdHui : mouvement.date
+    const executantPropose = mouvement.id_executant || mouvement.lieu?.batiment?.id_executant_defaut || ''
+
     setIdMouvement(mouvement.id)
     setDateLimite(mouvement.date)
-    setDateExecution(mouvement.date < aujourdHui ? aujourdHui : mouvement.date)
-    setIdExecutant(mouvement.id_executant || mouvement.lieu?.batiment?.id_executant_defaut || '')
+    setDateExecution(prochaineDateExecution)
+    setIdExecutant(estExecutantEnTravail(executantPropose, prochaineDateExecution) ? executantPropose : '')
     setUrgence(urgenceDepuisMouvement(mouvement.date, aujourdHui))
     setFormulaireOuvert(true)
   }
@@ -457,6 +565,12 @@ export function TravailChambres() {
 
     if (modalDateExecution > modalDateLimite) {
       toast.error('La date execution doit etre avant ou egale a la date limite.')
+      return
+    }
+
+    const validation = verifierAffectation(modalExecutant, modalDateExecution, modalItem.points, modalItem.tache.id)
+    if (!validation.ok) {
+      toast.error(validation.message || 'Affectation impossible.')
       return
     }
 
@@ -656,11 +770,7 @@ export function TravailChambres() {
                 <Champ label="Executant">
                   <select value={idExecutant} onChange={(event) => setIdExecutant(event.target.value)} className={inputClass}>
                     <option value="">Non affecte</option>
-                    {executants.map((executant) => (
-                      <option key={executant.id} value={executant.id}>
-                        {executant.nom}{estExecutantEnTravail(executant.id, dateExecution) ? '' : ' (pas en travail)'}
-                      </option>
-                    ))}
+                    {executantsCreationDisponibles.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
                   </select>
                 </Champ>
 
@@ -670,6 +780,12 @@ export function TravailChambres() {
                   </select>
                 </Champ>
               </div>
+
+              <AlerteAffectation
+                validation={validationCreation}
+                suggestions={suggestionsCreation}
+                onChoisir={(executantId) => setIdExecutant(executantId)}
+              />
 
               <Champ label="Commentaire">
                 <textarea value={commentaire} onChange={(event) => setCommentaire(event.target.value)} className={textareaClass} />
@@ -707,7 +823,7 @@ export function TravailChambres() {
               <Champ label="Executant">
                 <select value={modalExecutant} onChange={(event) => setModalExecutant(event.target.value)} className={inputClass}>
                   <option value="">Non affecte</option>
-                  {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
+                  {executantsModalDisponibles.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
                 </select>
               </Champ>
               <Champ label="Etat">
@@ -721,6 +837,12 @@ export function TravailChambres() {
                 </select>
               </Champ>
             </div>
+
+            <AlerteAffectation
+              validation={validationModal}
+              suggestions={suggestionsModal}
+              onChoisir={(executantId) => setModalExecutant(executantId)}
+            />
 
             <div className="mt-3">
               <Champ label="Commentaire">
@@ -745,6 +867,40 @@ export function TravailChambres() {
 
 function Champ({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>{children}</label>
+}
+
+function AlerteAffectation({
+  validation,
+  suggestions,
+  onChoisir,
+}: {
+  validation: ValidationAffectation
+  suggestions: SuggestionAffectation[]
+  onChoisir: (executantId: string) => void
+}) {
+  if (validation.ok) return null
+
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      <p className="font-semibold">{validation.message}</p>
+      {suggestions.length > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {suggestions.map((suggestion) => (
+            <button
+              key={suggestion.executant.id}
+              type="button"
+              onClick={() => onChoisir(suggestion.executant.id)}
+              className="rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-teal-800 ring-1 ring-amber-200 hover:bg-teal-50"
+            >
+              {suggestion.executant.nom} - {suggestion.pointsApres}/{suggestion.capaciteMax ?? 'infini'} pts
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-xs">Aucune proposition disponible sous 90% de capacite pour cette date.</p>
+      )}
+    </div>
+  )
 }
 
 function Badge({ tone, children }: { tone: 'red' | 'orange' | 'green' | 'slate'; children: React.ReactNode }) {
