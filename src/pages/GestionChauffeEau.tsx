@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Flame, Loader2, Pencil, RefreshCcw, Save, Search, Settings, X } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, DoorOpen, Flame, Pencil, Power, RefreshCcw, Save, Search, Settings, Thermometer, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   enregistrerChauffeEau,
@@ -382,48 +382,119 @@ export function GestionChauffeEau() {
 }
 
 function ControleRow({ controle, onReleve, onStatutAnomalie }: { controle: ControleChauffeEau; onReleve: (controle: ControleChauffeEau) => void; onStatutAnomalie: (id: string, statut: 'en_cours' | 'terminee') => Promise<void> }) {
+  const statutTone = controle.controleManquant ? 'orange' : controle.conforme ? 'green' : 'red'
+  const cardClass = controle.controleManquant
+    ? 'border-amber-200 bg-amber-50/35'
+    : controle.conforme
+      ? 'border-slate-200 bg-white'
+      : 'border-rose-200 bg-rose-50/35'
+
   return (
-    <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.9fr)_170px_190px_220px] xl:items-center">
-      <div className="min-w-0">
-        <div className="mb-2 flex flex-wrap items-center gap-2">
-          <Badge tone={controle.etatAttendu === 'ON' ? 'green' : 'slate'}>Attendu {controle.etatAttendu}</Badge>
-          {controle.controleManquant ? <Badge tone="orange">Controle manquant</Badge> : <Badge tone={controle.conforme ? 'green' : 'red'}>{controle.conforme ? 'Conforme' : 'Non conforme'}</Badge>}
-        </div>
-        <p className="font-semibold text-slate-950">{controle.chauffeEau.nom}</p>
-        <p className="text-xs text-slate-500">{controle.chauffeEau.code}</p>
-        <p className="mt-2 text-sm text-slate-600">{controle.chambres.map((chambre) => chambre.nom).join(', ') || 'Aucune chambre alimentee'}</p>
-      </div>
-      <div className="text-sm text-slate-600">
-        <p><span className="font-medium text-slate-900">Occupees :</span> {controle.chambresOccupees.map((chambre) => chambre.nom).join(', ') || '-'}</p>
-        <p><span className="font-medium text-slate-900">Arrivees :</span> {controle.chambresArrivee.map((chambre) => chambre.nom).join(', ') || '-'}</p>
-        <p><span className="font-medium text-slate-900">Departs :</span> {controle.chambresDepart.map((chambre) => chambre.nom).join(', ') || '-'}</p>
-      </div>
-      <div className="text-sm">
-        <p className="font-medium text-slate-900">Constate</p>
-        <p className={controle.releve?.etat_constate === 'ON' ? 'font-bold text-emerald-700' : 'font-bold text-slate-600'}>{controle.releve?.etat_constate || '-'}</p>
-      </div>
-      <div className="text-sm text-slate-600">
-        <p className="font-medium text-slate-900">Temperature</p>
-        <p>Debut : {valeurTexte(controle.releve?.temperature_debut) || '-'}</p>
-        <p>Fin matin : {valeurTexte(controle.releve?.temperature_fin_matin) || '-'}</p>
-      </div>
-      <div className="space-y-2 xl:text-right">
-        <p className={controle.actionAFaire === 'Aucune action' ? 'text-sm font-semibold text-emerald-700' : 'text-sm font-semibold text-rose-700'}>{controle.actionAFaire}</p>
-        <button type="button" onClick={() => onReleve(controle)} className={primaryButton}>
-          <CheckCircle2 className="h-4 w-4" />
-          Relever
-        </button>
-        {controle.anomalies.map((anomalie) => (
-          <div key={anomalie.id} className="rounded-md bg-rose-50 p-2 text-left text-xs text-rose-800">
-            <p className="font-semibold">{libelleAnomalie(anomalie.type_anomalie)}</p>
-            <p>{anomalie.message}</p>
-            <div className="mt-2 flex gap-1">
-              <button type="button" onClick={() => void onStatutAnomalie(anomalie.id, 'en_cours')} className="rounded border border-rose-200 px-2 py-1 font-semibold">En cours</button>
-              <button type="button" onClick={() => void onStatutAnomalie(anomalie.id, 'terminee')} className="rounded border border-rose-200 px-2 py-1 font-semibold">Terminee</button>
-            </div>
+    <div className={`m-3 rounded-lg border p-4 shadow-sm ${cardClass}`}>
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Badge tone={controle.etatAttendu === 'ON' ? 'green' : 'slate'}>
+              <Power className="h-3.5 w-3.5" />
+              Attendu {controle.etatAttendu}
+            </Badge>
+            <Badge tone={statutTone}>{controle.controleManquant ? 'Controle manquant' : controle.conforme ? 'Conforme' : 'Non conforme'}</Badge>
           </div>
-        ))}
+          <h3 className="truncate text-base font-semibold text-slate-950">{controle.chauffeEau.nom}</h3>
+          <p className="text-xs text-slate-500">{controle.chauffeEau.code}</p>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row xl:justify-end">
+          <button type="button" onClick={() => onReleve(controle)} className={primaryButton}>
+            <CheckCircle2 className="h-4 w-4" />
+            Relever
+          </button>
+        </div>
       </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(260px,1.2fr)_minmax(260px,1fr)_minmax(220px,0.8fr)_minmax(220px,0.8fr)]">
+        <InfoPanel icon={DoorOpen} title="Chambres alimentees">
+          <ChambreList chambres={controle.chambres} empty="Aucune chambre liee" />
+        </InfoPanel>
+
+        <InfoPanel icon={Flame} title="Mouvements du jour">
+          <div className="space-y-2">
+            <MouvementLine label="Arrivees" chambres={controle.chambresArrivee} tone="green" />
+            <MouvementLine label="Recouches" chambres={controle.chambresOccupees} tone="orange" />
+            <MouvementLine label="Departs" chambres={controle.chambresDepart} tone="slate" />
+          </div>
+        </InfoPanel>
+
+        <InfoPanel icon={Thermometer} title="Releve">
+          <div className="space-y-1 text-sm text-slate-600">
+            <p><span className="font-medium text-slate-900">Constate :</span> {controle.releve?.etat_constate || '-'}</p>
+            <p><span className="font-medium text-slate-900">Debut :</span> {valeurTexte(controle.releve?.temperature_debut) || '-'}{controle.releve?.temperature_debut !== null && controle.releve?.temperature_debut !== undefined ? ' deg' : ''}</p>
+            <p><span className="font-medium text-slate-900">Fin matin :</span> {valeurTexte(controle.releve?.temperature_fin_matin) || '-'}{controle.releve?.temperature_fin_matin !== null && controle.releve?.temperature_fin_matin !== undefined ? ' deg' : ''}</p>
+          </div>
+        </InfoPanel>
+
+        <InfoPanel icon={AlertTriangle} title="Action">
+          <p className={controle.actionAFaire === 'Aucune action' ? 'text-sm font-semibold text-emerald-700' : 'text-sm font-semibold text-rose-700'}>{controle.actionAFaire}</p>
+        </InfoPanel>
+      </div>
+
+      {controle.anomalies.length > 0 && (
+        <div className="mt-4 grid gap-2 lg:grid-cols-2">
+          {controle.anomalies.map((anomalie) => (
+            <div key={anomalie.id} className="rounded-md border border-rose-200 bg-white p-3 text-sm text-rose-800">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="font-semibold">{libelleAnomalie(anomalie.type_anomalie)}</p>
+                  <p className="mt-1 text-xs">{anomalie.message}</p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <button type="button" onClick={() => void onStatutAnomalie(anomalie.id, 'en_cours')} className="rounded border border-rose-200 px-2 py-1 text-xs font-semibold">En cours</button>
+                  <button type="button" onClick={() => void onStatutAnomalie(anomalie.id, 'terminee')} className="rounded border border-rose-200 px-2 py-1 text-xs font-semibold">Terminee</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InfoPanel({ icon: Icon, title, children }: { icon: React.ElementType; title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3">
+      <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900">
+        <Icon className="h-4 w-4 text-teal-700" />
+        {title}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function ChambreList({ chambres, empty }: { chambres: Array<{ id: string; nom: string }>; empty: string }) {
+  if (chambres.length === 0) return <p className="text-sm text-slate-400">{empty}</p>
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {chambres.map((chambre) => (
+        <span key={chambre.id} className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{chambre.nom}</span>
+      ))}
+    </div>
+  )
+}
+
+function MouvementLine({ label, chambres, tone }: { label: string; chambres: Array<{ id: string; nom: string }>; tone: 'green' | 'orange' | 'slate' }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs font-semibold uppercase text-slate-500">{label}</p>
+      {chambres.length === 0 ? (
+        <p className="text-sm text-slate-400">-</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {chambres.map((chambre) => <Badge key={chambre.id} tone={tone}>{chambre.nom}</Badge>)}
+        </div>
+      )}
     </div>
   )
 }
@@ -465,7 +536,7 @@ function Badge({ tone, children }: { tone: 'red' | 'orange' | 'green' | 'slate';
     green: 'bg-emerald-50 text-emerald-800 ring-emerald-100',
     slate: 'bg-slate-100 text-slate-700 ring-slate-200',
   }
-  return <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1 ${classes[tone]}`}>{children}</span>
+  return <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold ring-1 ${classes[tone]}`}>{children}</span>
 }
 
 function libelleAnomalie(type: string) {

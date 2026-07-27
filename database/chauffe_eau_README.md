@@ -4,8 +4,9 @@
 
 Le module controle les chauffe-eau par equipement, chaque chauffe-eau pouvant alimenter plusieurs chambres.
 
-- Etat attendu `ON` si au moins une chambre liee est occupee ou en arrivee le jour controle.
-- Etat attendu `OFF` si toutes les chambres liees sont vides.
+- Etat attendu `ON` si au moins une chambre liee a un mouvement `ARRIVEE` ou `RECOUCHE` le jour controle.
+- Etat attendu `OFF` si aucune chambre liee n'a de mouvement `ARRIVEE` ou `RECOUCHE` le jour controle.
+- Le calcul ne deduit pas l'occupation depuis les jours precedents.
 - Aucun point n'est attribue aux controles chauffe-eau.
 - Le module releve du domaine `maintenance`.
 
@@ -25,11 +26,11 @@ Le module controle les chauffe-eau par equipement, chaque chauffe-eau pouvant al
 
 ## Scenarios de test
 
-1. Chambre 301 occupee, 311 vide : `Bat1_301_311` doit etre `ON`.
+1. Chambre 301 en `RECOUCHE`, 311 sans mouvement : `Bat1_301_311` doit etre `ON`.
 2. Chambres 301 et 311 vides : `Bat1_301_311` doit etre `OFF`.
 3. Chambre 302 en arrivee aujourd'hui : `Bat1_302` doit etre `ON`.
 4. Toutes les chambres BAT 6 vides : `Bat6_global` doit etre `OFF`.
-5. Une chambre BAT 6 occupee : `Bat6_global` doit etre `ON`.
+5. Une chambre BAT 6 en `RECOUCHE` ou `ARRIVEE` aujourd'hui : `Bat6_global` doit etre `ON`.
 6. Etat constate `OFF` alors que l'etat attendu est `ON` : anomalie critique.
 7. Etat constate `ON` alors que l'etat attendu est `OFF` : anomalie energetique.
 8. Absence de releve du jour : controle manquant dans la page et le dashboard.

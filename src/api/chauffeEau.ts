@@ -259,12 +259,10 @@ export async function statistiquesChauffeEau(date: string): Promise<Statistiques
 }
 
 async function listerPlanningOccupation(date: string) {
-  const dateDebut = ajouterJours(date, -365)
   const { data, error } = await supabase
     .from('planning_chambre')
     .select(selectPlanning)
-    .gte('date', dateDebut)
-    .lte('date', date)
+    .eq('date', date)
     .order('date', { ascending: true })
     .returns<PlanningChambre[]>()
 
@@ -277,8 +275,8 @@ async function genererAnomalieDepuisReleve(releve: ChauffeEauReleve) {
 
   const type: TypeAnomalieChauffeEau = releve.etat_attendu === 'ON' ? 'CRITIQUE_OFF_OCCUPE' : 'ENERGETIQUE_ON_VIDE'
   const message = releve.etat_attendu === 'ON'
-    ? 'Chauffe-eau OFF alors qu’au moins une chambre concernée est occupée ou en arrivée.'
-    : 'Chauffe-eau ON alors que toutes les chambres concernées sont vides.'
+    ? 'Chauffe-eau OFF alors qu’au moins une chambre concernee est en arrivee ou recouche aujourd’hui.'
+    : 'Chauffe-eau ON alors qu’aucune chambre concernee ne demande de chauffe aujourd’hui.'
 
   const { error } = await supabase
     .from('chauffe_eau_anomalie')
@@ -302,23 +300,12 @@ function calculerOccupation(chambres: Lieu[], planningParLieu: Map<string, Plann
   chambres.forEach((chambre) => {
     const mouvements = planningParLieu.get(chambre.id) || []
     const arriveeDuJour = mouvements.some((mouvement) => mouvement.date === date && estType(mouvement, 'ARRIVEE'))
+    const recoucheDuJour = mouvements.some((mouvement) => mouvement.date === date && estType(mouvement, 'RECOUCHE'))
     const departDuJour = mouvements.some((mouvement) => mouvement.date === date && estType(mouvement, 'DEPART'))
 
     if (arriveeDuJour) chambresArrivee.push(chambre)
+    if (recoucheDuJour) chambresOccupees.push(chambre)
     if (departDuJour) chambresDepart.push(chambre)
-
-    const dernierMouvement = mouvements
-      .filter((mouvement) => estType(mouvement, 'ARRIVEE') || estType(mouvement, 'DEPART'))
-      .sort((a, b) => b.date.localeCompare(a.date))[0]
-
-    if ((dernierMouvement && estType(dernierMouvement, 'ARRIVEE')) || arriveeDuJour) {
-      chambresOccupees.push(chambre)
-    }
-
-    if (departDuJour && !arriveeDuJour) {
-      const index = chambresOccupees.findIndex((item) => item.id === chambre.id)
-      if (index >= 0) chambresOccupees.splice(index, 1)
-    }
   })
 
   return { chambresOccupees, chambresArrivee, chambresDepart }
@@ -327,10 +314,10 @@ function calculerOccupation(chambres: Lieu[], planningParLieu: Map<string, Plann
 function actionAFaire(etatAttendu: EtatChauffeEau, etatConstate: EtatChauffeEau | null, controleManquant: boolean) {
   if (controleManquant) return 'Faire le releve du jour'
   if (etatConstate === etatAttendu) return 'Aucune action'
-  return etatAttendu === 'ON' ? 'Allumer immediatement' : 'Eteindre pour eviter une consommation inutile'
+  return etatAttendu === 'ON' ? 'Allumer immediatement' : 'Eteindre, aucune arrivee ou recouche aujourd’hui'
 }
 
-function estType(mouvement: PlanningChambre, type: 'ARRIVEE' | 'DEPART') {
+function estType(mouvement: PlanningChambre, type: 'ARRIVEE' | 'DEPART' | 'RECOUCHE') {
   return normaliserTexte(mouvement.type_mouvement?.nom || '').includes(type.toLowerCase())
 }
 
@@ -341,19 +328,6 @@ function grouperPar<T>(items: T[], getKey: (item: T) => string) {
     map.set(key, [...(map.get(key) || []), item])
   })
   return map
-}
-
-function ajouterJours(date: string, jours: number) {
-  const valeur = new Date(`${date}T00:00:00`)
-  valeur.setDate(valeur.getDate() + jours)
-  return formatDateInput(valeur)
-}
-
-function formatDateInput(date: Date) {
-  const annee = date.getFullYear()
-  const mois = String(date.getMonth() + 1).padStart(2, '0')
-  const jour = String(date.getDate()).padStart(2, '0')
-  return `${annee}-${mois}-${jour}`
 }
 
 function normaliserTexte(valeur: string) {
