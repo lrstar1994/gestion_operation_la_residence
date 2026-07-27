@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar'
 import { AuthProvider } from './hooks/useAuth'
 import { Connexion } from './pages/Connexion'
 import { GestionExecutants } from './pages/GestionExecutants'
+import { GestionChauffeEau } from './pages/GestionChauffeEau'
 import { GestionLieux } from './pages/GestionLieux'
 import { GestionTypesMouvement } from './pages/GestionTypesMouvement'
 import { GestionUtilisateurs } from './pages/GestionUtilisateurs'
@@ -49,6 +50,7 @@ function LayoutPrive() {
           <Route element={<ProtectedRoute domaine="chambres" />}>
             <Route path="planning-chambres" element={<PlanningChambres />} />
             <Route path="travail-chambres" element={<TravailChambres />} />
+            <Route path="gestion-chauffe-eau" element={<GestionChauffeEau />} />
             <Route path="historique-planning-chambres" element={<HistoriquePlanningChambres />} />
             <Route path="menages-chambres" element={<MenagesChambres />} />
             <Route path="suivi-operationnel" element={<SuiviOperational />} />
