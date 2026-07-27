@@ -271,12 +271,33 @@ async function listerPlanningOccupation(date: string) {
 }
 
 async function genererAnomalieDepuisReleve(releve: ChauffeEauReleve) {
-  if (releve.etat_constate === releve.etat_attendu) return
+  if (releve.etat_constate === releve.etat_attendu) {
+    const { error } = await supabase
+      .from('chauffe_eau_anomalie')
+      .update({ statut: 'annulee' })
+      .eq('id_chauffe_eau', releve.id_chauffe_eau)
+      .eq('date_anomalie', releve.date_releve)
+      .neq('statut', 'annulee')
+
+    if (error) throw error
+    return
+  }
 
   const type: TypeAnomalieChauffeEau = releve.etat_attendu === 'ON' ? 'CRITIQUE_OFF_OCCUPE' : 'ENERGETIQUE_ON_VIDE'
+  const typeOppose: TypeAnomalieChauffeEau = type === 'CRITIQUE_OFF_OCCUPE' ? 'ENERGETIQUE_ON_VIDE' : 'CRITIQUE_OFF_OCCUPE'
   const message = releve.etat_attendu === 'ON'
     ? 'Chauffe-eau OFF alors qu’au moins une chambre concernee est en arrivee ou recouche aujourd’hui.'
     : 'Chauffe-eau ON alors qu’aucune chambre concernee ne demande de chauffe aujourd’hui.'
+
+  const { error: annulationError } = await supabase
+    .from('chauffe_eau_anomalie')
+    .update({ statut: 'annulee' })
+    .eq('id_chauffe_eau', releve.id_chauffe_eau)
+    .eq('date_anomalie', releve.date_releve)
+    .eq('type_anomalie', typeOppose)
+    .neq('statut', 'annulee')
+
+  if (annulationError) throw annulationError
 
   const { error } = await supabase
     .from('chauffe_eau_anomalie')
