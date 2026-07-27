@@ -189,6 +189,9 @@ export async function modifierMouvementChambre(id: string, payload: PlanningCham
 }
 
 export async function supprimerMouvementChambre(id: string) {
+  const { error: tacheError } = await supabase.from('tache_chambre').delete().eq('id_planning_chambre', id)
+  if (tacheError) throw tacheError
+
   const { error } = await supabase.from('planning_chambre').delete().eq('id', id)
   if (error) throw error
 }
