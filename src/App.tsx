@@ -32,6 +32,7 @@ function LayoutPrive() {
           <Route element={<ProtectedRoute domaine="maintenance" />}>
             <Route path="maintenance" element={<PageDomaine domaine="maintenance" />} />
             <Route path="interventions-maintenance" element={<InterventionsMaintenance />} />
+            <Route path="gestion-chauffe-eau" element={<GestionChauffeEau />} />
           </Route>
           <Route element={<ProtectedRoute domaine="chambres" />}>
             <Route path="chambres" element={<PageDomaine domaine="chambres" />} />
@@ -50,7 +51,6 @@ function LayoutPrive() {
           <Route element={<ProtectedRoute domaine="chambres" />}>
             <Route path="planning-chambres" element={<PlanningChambres />} />
             <Route path="travail-chambres" element={<TravailChambres />} />
-            <Route path="gestion-chauffe-eau" element={<GestionChauffeEau />} />
             <Route path="historique-planning-chambres" element={<HistoriquePlanningChambres />} />
             <Route path="menages-chambres" element={<MenagesChambres />} />
             <Route path="suivi-operationnel" element={<SuiviOperational />} />

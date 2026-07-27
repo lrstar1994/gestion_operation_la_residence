@@ -144,10 +144,10 @@ function SidebarContent({
         {peutVoirPlanning && <MenuLink to="/planning" icon={CalendarDays} label="Planning du personnel" />}
         {peutVoirTachesPeriodiques && <MenuLink to="/taches-periodiques" icon={Repeat} label="Taches periodiques" />}
         {peutVoirMaintenance && <MenuLink to="/interventions-maintenance" icon={Wrench} label="Interventions" />}
+        {peutVoirMaintenance && <MenuLink to="/gestion-chauffe-eau" icon={Flame} label="Gestion chauffe eau" />}
         {estAdmin && <MenuLink to="/historique-interventions" icon={History} label="Historique interventions" />}
         {peutVoirPlanningChambres && <MenuLink to="/planning-chambres" icon={DoorOpen} label="Planning chambres" />}
         {peutVoirPlanningChambres && <MenuLink to="/travail-chambres" icon={CalendarCheck} label="Travail chambres" />}
-        {peutVoirPlanningChambres && <MenuLink to="/gestion-chauffe-eau" icon={Flame} label="Gestion chauffe eau" />}
         {peutVoirPlanningChambres && <MenuLink to="/historique-planning-chambres" icon={CalendarClock} label="Historique chambres" />}
         {peutVoirPlanningChambres && <MenuLink to="/menages-chambres" icon={Sparkles} label="Menages chambres" />}
         {peutVoirPlanningChambres && <MenuLink to="/suivi-operationnel" icon={ClipboardCheck} label="Suivi operationnel" badge={bloquesAujourdhui} />}

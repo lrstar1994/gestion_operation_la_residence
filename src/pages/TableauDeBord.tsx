@@ -7,6 +7,7 @@ import {
   RefreshCcw,
   Sparkles,
   Wrench,
+  Flame,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -15,6 +16,7 @@ import { listerInterventionsMaintenance, type InterventionMaintenance } from '..
 import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
 import { listerHistoriqueTachesPeriodiques, listerPlanningTachesPeriodiques, type TachePeriodiqueHistorique, type TachePeriodiquePlanning } from '../api/tachesPeriodiques'
 import { listerMouvementsSuivi } from '../api/suiviOperationnel'
+import { statistiquesChauffeEau, type StatistiquesChauffeEau } from '../api/chauffeEau'
 import { useAuth } from '../hooks/useAuth'
 import { calculerCharges, type ChargeExecutant, type PlanningChambre } from '../api/planningChambre'
 
@@ -34,6 +36,7 @@ export function TableauDeBord() {
   const [historiqueTaches, setHistoriqueTaches] = useState<TachePeriodiqueHistorique[]>([])
   const [lieux, setLieux] = useState<Lieu[]>([])
   const [executants, setExecutants] = useState<Executant[]>([])
+  const [statsChauffeEau, setStatsChauffeEau] = useState<StatistiquesChauffeEau>({ nonConformes: 0, allumesInutilement: 0, eteintsAlorsOccupe: 0, controlesManquants: 0 })
   const [chargement, setChargement] = useState(true)
   const [rafraichissement, setRafraichissement] = useState(false)
 
@@ -44,13 +47,14 @@ export function TableauDeBord() {
     else setChargement(true)
 
     try {
-      const [mouvementsResultat, interventionsResultat, tachesResultat, historiqueTachesResultat, lieuxResultat, executantsResultat] = await Promise.all([
+      const [mouvementsResultat, interventionsResultat, tachesResultat, historiqueTachesResultat, lieuxResultat, executantsResultat, statsChauffeResultat] = await Promise.all([
         listerMouvementsSuivi(aujourdHui),
         listerInterventionsMaintenance(),
         listerPlanningTachesPeriodiques(),
         listerHistoriqueTachesPeriodiques(),
         listerLieux(),
         listerExecutants(),
+        statistiquesChauffeEau(aujourdHui),
       ])
 
       setMouvements(mouvementsResultat)
@@ -59,6 +63,7 @@ export function TableauDeBord() {
       setHistoriqueTaches(historiqueTachesResultat)
       setLieux(lieuxResultat)
       setExecutants(executantsResultat)
+      setStatsChauffeEau(statsChauffeResultat)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Tableau de bord impossible a charger.')
     } finally {
@@ -125,12 +130,13 @@ export function TableauDeBord() {
         </div>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <KpiCard to="/planning-chambres" icon={DoorOpen} label="Occupation" value={`${occupation}%`} detail={`${chambresPlanifiees.size}/${chambres.length} chambres`} tone="teal" />
             <KpiCard to="/suivi-operationnel" icon={CheckCircle2} label="Taches du jour" value={String((repartitionEtats.AFFECTE || 0) + (repartitionEtats.EN_COURS || 0) + (repartitionEtats.BLOQUE || 0))} detail="mouvements a traiter" tone="blue" />
             <KpiCard to="/interventions-maintenance" icon={Wrench} label="Interventions en cours" value={String(interventionsActives.length)} detail={`${interventionsUrgentes.length} urgentes`} tone="orange" />
             <KpiCard to="/planning-chambres" icon={ClipboardIcon} label="Planning du jour" value={String(mouvements.length)} detail={`${avancement}% termine`} tone="slate" />
             <KpiCard to="/taches-periodiques" icon={AlertTriangle} label="En retard" value={String(tachesEnRetard.length)} detail="taches periodiques" tone="red" />
+            <KpiCard to="/gestion-chauffe-eau" icon={Flame} label="Chauffe-eau" value={String(statsChauffeEau.nonConformes)} detail={`${statsChauffeEau.controlesManquants} controles manquants`} tone={statsChauffeEau.nonConformes > 0 ? 'red' : 'teal'} />
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
@@ -161,6 +167,15 @@ export function TableauDeBord() {
               </div>
             </Panel>
           </div>
+
+          <Panel title="Gestion energetique / Chauffe-eau" action={`${statsChauffeEau.nonConformes} non conforme(s)`}>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <MiniStat label="Non conformes" value={statsChauffeEau.nonConformes} tone={statsChauffeEau.nonConformes > 0 ? 'red' : 'green'} />
+              <MiniStat label="Allumes inutilement" value={statsChauffeEau.allumesInutilement} tone={statsChauffeEau.allumesInutilement > 0 ? 'orange' : 'green'} />
+              <MiniStat label="Eteints alors occupes" value={statsChauffeEau.eteintsAlorsOccupe} tone={statsChauffeEau.eteintsAlorsOccupe > 0 ? 'red' : 'green'} />
+              <MiniStat label="Controles manquants" value={statsChauffeEau.controlesManquants} tone={statsChauffeEau.controlesManquants > 0 ? 'orange' : 'green'} />
+            </div>
+          </Panel>
 
           <div className="grid gap-5 xl:grid-cols-2">
             <Panel title="Interventions maintenance">
@@ -241,6 +256,21 @@ function Panel({ title, action, children }: { title: string; action?: string; ch
 
 function EtatCounter({ etat, value }: { etat: string; value: number }) {
   return <div className="rounded-md bg-slate-50 p-3"><p className="text-xs font-semibold uppercase text-slate-400">{libelleEtat(etat)}</p><p className="mt-1 text-xl font-bold text-slate-900">{value}</p></div>
+}
+
+function MiniStat({ label, value, tone }: { label: string; value: number; tone: 'red' | 'orange' | 'green' }) {
+  const classes = {
+    red: 'bg-rose-50 text-rose-800 ring-rose-100',
+    orange: 'bg-amber-50 text-amber-800 ring-amber-100',
+    green: 'bg-emerald-50 text-emerald-800 ring-emerald-100',
+  }
+
+  return (
+    <Link to="/gestion-chauffe-eau" className={`rounded-md p-3 ring-1 transition hover:-translate-y-0.5 hover:shadow-sm ${classes[tone]}`}>
+      <p className="text-sm font-medium">{label}</p>
+      <p className="mt-2 text-2xl font-bold">{value}</p>
+    </Link>
+  )
 }
 
 function ChargeRow({ charge }: { charge: ChargeExecutant }) {
