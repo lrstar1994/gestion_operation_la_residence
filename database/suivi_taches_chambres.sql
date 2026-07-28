@@ -106,6 +106,7 @@ CREATE OR REPLACE FUNCTION public.creer_tache_chambre_depuis_planning()
 RETURNS trigger AS $$
 DECLARE
   executant_defaut uuid;
+  executant_a_affecter uuid;
   points_mouvement integer;
   urgence_tache text;
 BEGIN
@@ -119,6 +120,21 @@ BEGIN
   WHERE id = NEW.id_type_mouvement;
 
   urgence_tache := CASE WHEN NEW.date <= CURRENT_DATE THEN 'haute' ELSE 'normale' END;
+
+  IF NEW.id_executant IS NOT NULL THEN
+    executant_a_affecter := NEW.id_executant;
+  ELSIF executant_defaut IS NOT NULL AND EXISTS (
+    SELECT 1
+    FROM public.planning_executant pe
+    JOIN public.type_planning tp ON tp.id = pe.id_type_planning
+    WHERE pe.id_executant = executant_defaut
+      AND pe.date = NEW.date
+      AND lower(tp.nom) = 'travail'
+  ) THEN
+    executant_a_affecter := executant_defaut;
+  ELSE
+    executant_a_affecter := NULL;
+  END IF;
 
   IF TG_OP = 'INSERT' THEN
     INSERT INTO public.tache_chambre (
@@ -142,7 +158,7 @@ BEGIN
       NEW.date,
       NEW.date,
       NEW.date,
-      COALESCE(NEW.id_executant, executant_defaut),
+      executant_a_affecter,
       NEW.id_etat,
       points_mouvement,
       urgence_tache,
@@ -158,7 +174,7 @@ BEGIN
       date_mouvement = NEW.date,
       date_execution = NEW.date,
       date_limite = NEW.date,
-      id_executant = COALESCE(NEW.id_executant, executant_defaut),
+      id_executant = executant_a_affecter,
       id_etat = NEW.id_etat,
       points = points_mouvement,
       urgence = urgence_tache,
@@ -189,7 +205,7 @@ BEGIN
         NEW.date,
         NEW.date,
         NEW.date,
-        COALESCE(NEW.id_executant, executant_defaut),
+        executant_a_affecter,
         NEW.id_etat,
         points_mouvement,
         urgence_tache,
