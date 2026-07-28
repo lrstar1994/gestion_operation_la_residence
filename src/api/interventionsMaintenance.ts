@@ -237,6 +237,24 @@ export function urlPubliquePhoto(chemin: string) {
   return supabase.storage.from(bucketInterventions).getPublicUrl(chemin).data.publicUrl
 }
 
+export async function telechargerPhotoIntervention(photo: PhotoIntervention) {
+  const reponse = await fetch(urlPubliquePhoto(photo.url_storage))
+  if (!reponse.ok) {
+    throw new Error('Telechargement de la photo impossible.')
+  }
+
+  const blob = await reponse.blob()
+  const url = URL.createObjectURL(blob)
+  const lien = document.createElement('a')
+
+  lien.href = url
+  lien.download = photo.nom_fichier || 'photo_intervention.jpg'
+  document.body.appendChild(lien)
+  lien.click()
+  lien.remove()
+  URL.revokeObjectURL(url)
+}
+
 export function compterPhotosParType(photos: PhotoIntervention[] | undefined) {
   const compte: Record<TypePhotoIntervention, number> = {
     avant: 0,

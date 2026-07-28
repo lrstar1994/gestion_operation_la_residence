@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Camera, Eye, Loader2, RefreshCcw, Search, X } from 'lucide-react'
+import { Camera, Download, Eye, Loader2, RefreshCcw, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   compterPhotosParType,
   listerInterventionsMaintenance,
   listerTypesInterventionMaintenance,
+  telechargerPhotoIntervention,
   urlPubliquePhoto,
   type InterventionMaintenance,
+  type PhotoIntervention,
   type PrioriteIntervention,
   type TypeInterventionMaintenance,
 } from '../api/interventionsMaintenance'
@@ -63,6 +65,14 @@ export function HistoriqueInterventions() {
   useEffect(() => {
     void charger()
   }, [charger])
+
+  async function telechargerPhoto(photo: PhotoIntervention) {
+    try {
+      await telechargerPhotoIntervention(photo)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Telechargement impossible.')
+    }
+  }
 
   const interventionsFiltrees = useMemo(() => {
     const terme = recherche.trim().toLowerCase()
@@ -243,12 +253,12 @@ export function HistoriqueInterventions() {
         </div>
       </div>
 
-      {detail && <DetailHistorique intervention={detail} onClose={() => setDetail(null)} />}
+      {detail && <DetailHistorique intervention={detail} onClose={() => setDetail(null)} onTelechargerPhoto={(photo) => void telechargerPhoto(photo)} />}
     </section>
   )
 }
 
-function DetailHistorique({ intervention, onClose }: { intervention: InterventionMaintenance; onClose: () => void }) {
+function DetailHistorique({ intervention, onClose, onTelechargerPhoto }: { intervention: InterventionMaintenance; onClose: () => void; onTelechargerPhoto: (photo: PhotoIntervention) => void }) {
   const compte = compterPhotosParType(intervention.photos)
   const photosVisibles = photosInterventionVisibles(intervention)
 
@@ -300,6 +310,10 @@ function DetailHistorique({ intervention, onClose }: { intervention: Interventio
                           <span>{formatDateHeure(photo.created_at)}</span>
                         </div>
                         {photo.commentaire && <p>{photo.commentaire}</p>}
+                        <button type="button" onClick={() => onTelechargerPhoto(photo)} className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800">
+                          <Download className="h-3.5 w-3.5" />
+                          Telecharger
+                        </button>
                       </figcaption>
                     </figure>
                   ))}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { Loader2, RefreshCcw, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { listerExecutants, type Executant } from '../api/executants'
@@ -233,7 +233,7 @@ export function HistoriquePlanningChambres() {
                                 <div className="space-y-2">
                                   {mouvements.map((mouvement) => (
                                     <div key={mouvement.id} className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
-                                      <Badge tone={couleurMouvement(mouvement.type_mouvement?.nom)}>{mouvement.type_mouvement?.nom || '-'}</Badge>
+                                      <BadgeMouvement couleur={mouvement.type_mouvement?.couleur}>{mouvement.type_mouvement?.nom || '-'}</BadgeMouvement>
                                       <p className="mt-2 truncate text-xs font-medium text-slate-700">{mouvement.executant?.nom || 'Non affecte'}</p>
                                     </div>
                                   ))}
@@ -278,13 +278,29 @@ function Badge({ tone, children }: { tone: 'red' | 'orange' | 'green' | 'teal' |
   return <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1 ${classes[tone]}`}>{children}</span>
 }
 
-function couleurMouvement(type?: string): 'red' | 'orange' | 'green' | 'teal' | 'blue' | 'slate' {
-  const nom = type?.toUpperCase() || ''
-  if (nom.includes('DEPART')) return 'red'
-  if (nom.includes('RECOUCHE')) return 'blue'
-  if (nom.includes('ARRIVEE')) return 'green'
-  if (nom.includes('MENAGE')) return 'teal'
-  return 'slate'
+function BadgeMouvement({ couleur, children }: { couleur?: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1" style={styleMouvement(couleur)}>
+      {children}
+    </span>
+  )
+}
+
+function styleMouvement(couleur?: string): CSSProperties {
+  const hex = /^#[0-9A-Fa-f]{6}$/.test(couleur || '') ? couleur! : '#64748b'
+  return {
+    backgroundColor: `${hex}1A`,
+    color: assombrirHex(hex, 0.55),
+    ['--tw-ring-color' as string]: `${hex}45`,
+  }
+}
+
+function assombrirHex(hex: string, facteur: number) {
+  const valeur = hex.replace('#', '')
+  const r = Math.max(0, Math.round(parseInt(valeur.slice(0, 2), 16) * facteur))
+  const g = Math.max(0, Math.round(parseInt(valeur.slice(2, 4), 16) * facteur))
+  const b = Math.max(0, Math.round(parseInt(valeur.slice(4, 6), 16) * facteur))
+  return `rgb(${r}, ${g}, ${b})`
 }
 
 function nomLieu(lieu: Lieu) {

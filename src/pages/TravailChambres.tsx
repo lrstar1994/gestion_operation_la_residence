@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { CalendarCheck, Loader2, Plus, RefreshCcw, Save, Search, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { listerExecutants, type Executant } from '../api/executants'
@@ -687,15 +687,15 @@ export function TravailChambres() {
                                   ) : (
                                     <div className="space-y-2">
                                       {items.map((item) => (
-                                        <div key={item.id} className={item.planifie ? 'rounded-md border border-teal-200 bg-teal-50 p-2' : 'rounded-md border border-amber-200 bg-amber-50 p-2'}>
+                                        <div key={item.id} className="rounded-md border p-2" style={styleMouvement(item.type?.couleur)}>
                                           <div className="mb-2 flex flex-wrap items-center gap-1">
                                             <Badge tone={item.planifie ? 'green' : 'orange'}>{item.planifie ? 'Programme' : 'Non programme'}</Badge>
                                             <Badge tone={couleurUrgence(item.urgence)}>{libelleUrgence(item.urgence)}</Badge>
                                           </div>
-                                          <p className="text-xs font-semibold text-slate-900">{libelleTravailChambre(item.type?.nom)} ({item.points} pt)</p>
-                                          <p className="mt-1 text-xs text-slate-500">Mouvement hotelier : {item.type?.nom || '-'}</p>
-                                          <p className="mt-1 truncate text-xs text-slate-600">{item.executant?.nom || 'Non affecte'}</p>
-                                          {item.dateMouvement !== item.date && <p className="mt-1 text-xs text-slate-500">Mouvement : {formatDate(item.dateMouvement)}</p>}
+                                          <p className="text-xs font-semibold">{libelleTravailChambre(item.type?.nom)} ({item.points} pt)</p>
+                                          <p className="mt-1 text-xs opacity-75">Mouvement hotelier : {item.type?.nom || '-'}</p>
+                                          <p className="mt-1 truncate text-xs opacity-80">{item.executant?.nom || 'Non affecte'}</p>
+                                          {item.dateMouvement !== item.date && <p className="mt-1 text-xs opacity-75">Mouvement : {formatDate(item.dateMouvement)}</p>}
                                           {item.tache && (
                                             <button type="button" onClick={() => ouvrirModal(item)} className="mt-2 w-full rounded-md bg-teal-700 px-2 py-1.5 text-xs font-semibold text-white hover:bg-teal-800">
                                               Modifier
@@ -911,6 +911,23 @@ function Badge({ tone, children }: { tone: 'red' | 'orange' | 'green' | 'slate';
     slate: 'bg-slate-100 text-slate-700 ring-slate-200',
   }
   return <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1 ${classes[tone]}`}>{children}</span>
+}
+
+function styleMouvement(couleur?: string): CSSProperties {
+  const hex = /^#[0-9A-Fa-f]{6}$/.test(couleur || '') ? couleur! : '#64748b'
+  return {
+    backgroundColor: `${hex}1A`,
+    borderColor: `${hex}40`,
+    color: assombrirHex(hex, 0.55),
+  }
+}
+
+function assombrirHex(hex: string, facteur: number) {
+  const valeur = hex.replace('#', '')
+  const r = Math.max(0, Math.round(parseInt(valeur.slice(0, 2), 16) * facteur))
+  const g = Math.max(0, Math.round(parseInt(valeur.slice(2, 4), 16) * facteur))
+  const b = Math.max(0, Math.round(parseInt(valeur.slice(4, 6), 16) * facteur))
+  return `rgb(${r}, ${g}, ${b})`
 }
 
 function ChargeExecutantsOperationnelles({ charges }: { charges: ChargeExecutantTravail[] }) {

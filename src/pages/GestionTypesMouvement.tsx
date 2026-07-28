@@ -15,6 +15,7 @@ export function GestionTypesMouvement() {
   const [edition, setEdition] = useState<TypeMouvement | null>(null)
   const [nom, setNom] = useState('')
   const [points, setPoints] = useState(0)
+  const [couleur, setCouleur] = useState('#64748b')
   const [soumission, setSoumission] = useState(false)
 
   useEffect(() => {
@@ -37,12 +38,14 @@ export function GestionTypesMouvement() {
     setEdition(null)
     setNom('')
     setPoints(0)
+    setCouleur('#64748b')
   }
 
   function commencerEdition(type: TypeMouvement) {
     setEdition(type)
     setNom(type.nom)
     setPoints(type.points)
+    setCouleur(type.couleur || '#64748b')
   }
 
   async function enregistrer(event: React.FormEvent<HTMLFormElement>) {
@@ -60,10 +63,15 @@ export function GestionTypesMouvement() {
       return
     }
 
+    if (!/^#[0-9A-Fa-f]{6}$/.test(couleur)) {
+      toast.error('La couleur doit etre au format #RRGGBB.')
+      return
+    }
+
     setSoumission(true)
 
     try {
-      const payload = { nom: nomNettoye, points }
+      const payload = { nom: nomNettoye, points, couleur }
       const type = edition ? await modifierTypeMouvement(edition.id, payload) : await creerTypeMouvement(payload)
 
       setTypes((liste) => {
@@ -128,6 +136,25 @@ export function GestionTypesMouvement() {
             />
           </label>
 
+          <label className="mt-3 block">
+            <span className="mb-1 block text-sm font-medium text-slate-700">Couleur</span>
+            <div className="flex gap-2">
+              <input
+                type="color"
+                value={couleur}
+                onChange={(event) => setCouleur(event.target.value)}
+                className="h-10 w-14 rounded-md border border-slate-300 bg-white p-1"
+                aria-label="Couleur du mouvement"
+              />
+              <input
+                value={couleur}
+                onChange={(event) => setCouleur(event.target.value)}
+                placeholder="#64748b"
+                className="h-10 flex-1 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+              />
+            </div>
+          </label>
+
           <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             {edition && (
               <button type="button" onClick={reinitialiser} className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
@@ -152,24 +179,31 @@ export function GestionTypesMouvement() {
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Nom</th>
                   <th className="px-4 py-3 text-left font-semibold text-slate-600">Points</th>
+                  <th className="px-4 py-3 text-left font-semibold text-slate-600">Couleur</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-600">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {chargement && (
                   <tr>
-                    <td colSpan={3} className="px-4 py-8 text-center text-slate-500">Chargement...</td>
+                    <td colSpan={4} className="px-4 py-8 text-center text-slate-500">Chargement...</td>
                   </tr>
                 )}
                 {!chargement && types.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-4 py-8 text-center text-slate-500">Aucun type de mouvement.</td>
+                    <td colSpan={4} className="px-4 py-8 text-center text-slate-500">Aucun type de mouvement.</td>
                   </tr>
                 )}
                 {!chargement && types.map((type) => (
                   <tr key={type.id}>
                     <td className="px-4 py-3 font-semibold text-slate-900">{type.nom}</td>
                     <td className="px-4 py-3 text-slate-600">{type.points} pts</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 text-slate-600">
+                        <span className="h-5 w-5 rounded-md ring-1 ring-slate-200" style={{ backgroundColor: type.couleur || '#64748b' }} />
+                        <span className="font-mono text-xs">{type.couleur || '#64748b'}</span>
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-2">
                         <button type="button" onClick={() => commencerEdition(type)} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-100" aria-label="Modifier">

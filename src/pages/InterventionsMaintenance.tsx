@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Camera,
   CheckCircle2,
+  Download,
   Eye,
   ImagePlus,
   Loader2,
@@ -26,6 +27,7 @@ import {
   modifierInterventionMaintenance,
   supprimerInterventionMaintenance,
   supprimerPhotoIntervention,
+  telechargerPhotoIntervention,
   uploadPhotosIntervention,
   urlPubliquePhoto,
   type InterventionMaintenance,
@@ -269,6 +271,14 @@ export function InterventionsMaintenance() {
     }
   }
 
+  async function telechargerPhoto(photo: PhotoIntervention) {
+    try {
+      await telechargerPhotoIntervention(photo)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Telechargement impossible.')
+    }
+  }
+
   async function ajouterCommentaire(idIntervention: string, commentaire: string, rafraichir = true) {
     if (!commentaire.trim()) return
     try {
@@ -357,6 +367,7 @@ export function InterventionsMaintenance() {
           onTerminer={() => setFermeture(detail)}
           onChangerEtat={(etat) => void changerEtat(detail, etat)}
           onSupprimerPhoto={(photo) => void supprimerPhoto(photo)}
+          onTelechargerPhoto={(photo) => void telechargerPhoto(photo)}
           onCommenter={(commentaire) => void ajouterCommentaire(detail.id, commentaire)}
         />
       )}
@@ -420,7 +431,7 @@ function InterventionRow({ intervention, onVoir, onModifier, onPhotos, onSupprim
   )
 }
 
-function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer, onChangerEtat, onSupprimerPhoto, onCommenter }: {
+function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer, onChangerEtat, onSupprimerPhoto, onTelechargerPhoto, onCommenter }: {
   intervention: InterventionMaintenance
   etats: EtatMouvement[]
   onClose: () => void
@@ -428,6 +439,7 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer
   onTerminer: () => void
   onChangerEtat: (etat: string) => void
   onSupprimerPhoto: (photo: PhotoIntervention) => void
+  onTelechargerPhoto: (photo: PhotoIntervention) => void
   onCommenter: (commentaire: string) => void
 }) {
   const [typeActif, setTypeActif] = useState<TypePhotoIntervention>('avant')
@@ -492,7 +504,13 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer
                 <figcaption className="space-y-2 p-3">
                   <p className="text-sm font-medium text-slate-800">{libelleTypePhoto(photo.type_photo)}</p>
                   {photo.commentaire && <p className="text-xs text-slate-500">{photo.commentaire}</p>}
-                  {!ferme && <button type="button" onClick={() => onSupprimerPhoto(photo)} className="text-xs font-semibold text-rose-700 hover:text-rose-800">Supprimer</button>}
+                  <div className="flex flex-wrap gap-3">
+                    <button type="button" onClick={() => onTelechargerPhoto(photo)} className="inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:text-teal-800">
+                      <Download className="h-3.5 w-3.5" />
+                      Telecharger
+                    </button>
+                    {!ferme && <button type="button" onClick={() => onSupprimerPhoto(photo)} className="text-xs font-semibold text-rose-700 hover:text-rose-800">Supprimer</button>}
+                  </div>
                 </figcaption>
               </figure>
             ))}

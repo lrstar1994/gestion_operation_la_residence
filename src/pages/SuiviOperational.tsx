@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { AlertTriangle, CalendarDays, Clock, History, RefreshCcw, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { listerEtatsMouvement, type EtatMouvement } from '../api/planningChambre'
@@ -229,7 +229,11 @@ export function SuiviOperational() {
                       <p className="mt-1 text-xs text-slate-500">Mouvement hotelier : {formatDate(tache.date_mouvement)}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{tache.type_mouvement?.nom} ({tache.points} pts)</td>
+                  <td className="px-4 py-3">
+                    <BadgeMouvement couleur={tache.type_mouvement?.couleur}>
+                      {tache.type_mouvement?.nom || '-'} ({tache.points} pts)
+                    </BadgeMouvement>
+                  </td>
                   <td className="px-4 py-3 text-slate-700">{tache.executant?.nom || 'Non affecte'}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-md px-2 py-1 text-xs font-semibold ring-1 ${couleursEtat[tache.etat?.nom || ''] || 'bg-slate-100 text-slate-700 ring-slate-200'}`}>
@@ -296,6 +300,31 @@ function SelectFiltre({ value, onChange, options, label }: { value: string; onCh
       {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select>
   )
+}
+
+function BadgeMouvement({ couleur, children }: { couleur?: string; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1" style={styleMouvement(couleur)}>
+      {children}
+    </span>
+  )
+}
+
+function styleMouvement(couleur?: string): CSSProperties {
+  const hex = /^#[0-9A-Fa-f]{6}$/.test(couleur || '') ? couleur! : '#64748b'
+  return {
+    backgroundColor: `${hex}1A`,
+    color: assombrirHex(hex, 0.55),
+    ['--tw-ring-color' as string]: `${hex}45`,
+  }
+}
+
+function assombrirHex(hex: string, facteur: number) {
+  const valeur = hex.replace('#', '')
+  const r = Math.max(0, Math.round(parseInt(valeur.slice(0, 2), 16) * facteur))
+  const g = Math.max(0, Math.round(parseInt(valeur.slice(2, 4), 16) * facteur))
+  const b = Math.max(0, Math.round(parseInt(valeur.slice(4, 6), 16) * facteur))
+  return `rgb(${r}, ${g}, ${b})`
 }
 
 function PaginationSuivi({

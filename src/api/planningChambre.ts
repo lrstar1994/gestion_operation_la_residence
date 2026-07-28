@@ -7,6 +7,7 @@ export type TypeMouvement = {
   id: string
   nom: string
   points: number
+  couleur: string
 }
 
 export type EtatMouvement = {
@@ -76,14 +77,14 @@ export type ConflitPlanningChambre = {
   existants: PlanningChambre[]
 }
 
-const selectTypeMouvement = 'id,nom,points'
+const selectTypeMouvement = 'id,nom,points,couleur'
 const selectEtatMouvement = 'id,nom'
 const selectPlanningChambre =
-  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),type_mouvement(id,nom,points),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
+  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
 const selectTemplate =
   'id,nom,description'
 const selectTemplateItem =
-  'id,id_template,id_lieu,jour_semaine,id_type_mouvement,id_executant,lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),type_mouvement(id,nom,points),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
+  'id,id_template,id_lieu,jour_semaine,id_type_mouvement,id_executant,lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),type_mouvement(id,nom,points,couleur),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
 
 export async function listerTypesMouvement() {
   const { data, error } = await supabase
@@ -96,7 +97,7 @@ export async function listerTypesMouvement() {
   return data
 }
 
-export async function creerTypeMouvement(payload: { nom: string; points: number }) {
+export async function creerTypeMouvement(payload: { nom: string; points: number; couleur: string }) {
   const { data, error } = await supabase
     .from('type_mouvement')
     .insert(payload)
@@ -107,7 +108,7 @@ export async function creerTypeMouvement(payload: { nom: string; points: number 
   return data
 }
 
-export async function modifierTypeMouvement(id: string, payload: { nom: string; points: number }) {
+export async function modifierTypeMouvement(id: string, payload: { nom: string; points: number; couleur: string }) {
   const { data, error } = await supabase
     .from('type_mouvement')
     .update(payload)

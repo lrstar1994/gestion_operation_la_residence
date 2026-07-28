@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { AlertTriangle, BedDouble, CalendarDays, ChevronLeft, ChevronRight, Maximize2, Minimize2, Save, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Lieu } from '../api/lieux'
@@ -777,23 +777,35 @@ function CellMouvements({ mouvements }: { mouvements: PlanningChambre[] }) {
   return (
     <div className="space-y-1">
       {mouvements.map((mouvement) => (
-        <div key={mouvement.id} className={`rounded-md px-2 py-1 ring-1 ${couleurMouvement(mouvement.type_mouvement?.nom)}`}>
+        <div
+          key={mouvement.id}
+          className="rounded-md px-2 py-1 ring-1"
+          style={styleMouvement(mouvement.type_mouvement?.couleur)}
+        >
           <p className="text-xs font-semibold">{mouvement.type_mouvement?.nom} ({mouvement.type_mouvement?.points} pts)</p>
-          <p className="truncate text-xs text-slate-500">{mouvement.executant?.nom || 'Non affecte'}</p>
+          <p className="truncate text-xs opacity-80">{mouvement.executant?.nom || 'Non affecte'}</p>
         </div>
       ))}
     </div>
   )
 }
 
-function couleurMouvement(type?: string) {
-  const nom = type?.toUpperCase() || ''
+function styleMouvement(couleur?: string): CSSProperties {
+  const hex = /^#[0-9A-Fa-f]{6}$/.test(couleur || '') ? couleur! : '#64748b'
+  return {
+    backgroundColor: `${hex}1A`,
+    borderColor: `${hex}40`,
+    color: assombrirHex(hex, 0.55),
+    ['--tw-ring-color' as string]: `${hex}45`,
+  }
+}
 
-  if (nom.includes('DEPART')) return 'bg-rose-50 text-rose-800 ring-rose-100'
-  if (nom.includes('RECOUCHE')) return 'bg-sky-50 text-sky-800 ring-sky-100'
-  if (nom.includes('ARRIVEE')) return 'bg-emerald-50 text-emerald-800 ring-emerald-100'
-  if (nom.includes('MENAGE')) return 'bg-teal-50 text-teal-800 ring-teal-100'
-  return 'bg-slate-100 text-slate-700 ring-slate-200'
+function assombrirHex(hex: string, facteur: number) {
+  const valeur = hex.replace('#', '')
+  const r = Math.max(0, Math.round(parseInt(valeur.slice(0, 2), 16) * facteur))
+  const g = Math.max(0, Math.round(parseInt(valeur.slice(2, 4), 16) * facteur))
+  const b = Math.max(0, Math.round(parseInt(valeur.slice(4, 6), 16) * facteur))
+  return `rgb(${r}, ${g}, ${b})`
 }
 
 function ChargeExecutants({
