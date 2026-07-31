@@ -479,8 +479,7 @@ export function TravailChambres() {
 
     const validation = verifierAffectation(idExecutant, dateExecution, mouvementSelectionne.type_mouvement?.points || 0)
     if (!validation.ok) {
-      toast.error(validation.message || 'Affectation impossible.')
-      return
+      toast.warning(validation.message || 'Affectation en surcharge.')
     }
 
     setSoumission(true)
@@ -570,8 +569,7 @@ export function TravailChambres() {
 
     const validation = verifierAffectation(modalExecutant, modalDateExecution, modalItem.points, modalItem.tache.id)
     if (!validation.ok) {
-      toast.error(validation.message || 'Affectation impossible.')
-      return
+      toast.warning(validation.message || 'Affectation en surcharge.')
     }
 
     await mettreAJourTache(modalItem.tache.id, {
