@@ -122,6 +122,19 @@ export async function creerPlanningTachePeriodique(payload: TachePeriodiquePlann
   return data
 }
 
+export async function creerPlanningsTachesPeriodiques(payloads: TachePeriodiquePlanningPayload[]) {
+  if (payloads.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('tache_periodique_planning')
+    .insert(payloads)
+    .select(selectPlanning)
+    .returns<TachePeriodiquePlanning[]>()
+
+  if (error) throw error
+  return data
+}
+
 export async function modifierPlanningTachePeriodique(id: string, payload: Partial<TachePeriodiquePlanningPayload>) {
   const { data, error } = await supabase
     .from('tache_periodique_planning')

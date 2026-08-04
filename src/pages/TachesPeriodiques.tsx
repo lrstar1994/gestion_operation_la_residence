@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Pencil, Plus, RefreshCcw, Save, Search, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
-  creerPlanningTachePeriodique,
+  creerPlanningsTachesPeriodiques,
   creerTachePeriodique,
   modifierPlanningTachePeriodique,
   modifierTachePeriodique,
@@ -135,11 +135,11 @@ export function TachesPeriodiques() {
     }
   }
 
-  async function creerOccurrence(tache: TachePeriodique, idLieu: string, dateEcheance: string) {
+  async function creerOccurrence(tache: TachePeriodique, idsLieux: string[], dateEcheance: string) {
     const etatAFaire = etats.find((etat) => etat.nom === 'A_FAIRE')
 
-    if (!idLieu) {
-      toast.error('Choisissez un lieu.')
+    if (idsLieux.length === 0) {
+      toast.error('Choisissez au moins un lieu.')
       return
     }
 
@@ -153,14 +153,16 @@ export function TachesPeriodiques() {
       return
     }
 
-    const occurrenceExistante = planning.find((item) => item.id_tache === tache.id && item.id_lieu === idLieu)
-    if (occurrenceExistante) {
-      toast.error('Une echeance existe deja pour cette tache et ce lieu.')
+    const idsExistants = new Set(planning.filter((item) => item.id_tache === tache.id).map((item) => item.id_lieu))
+    const idsACreer = idsLieux.filter((idLieu) => !idsExistants.has(idLieu))
+
+    if (idsACreer.length === 0) {
+      toast.error('Une echeance existe deja pour tous les lieux selectionnes.')
       return
     }
 
     try {
-      await creerPlanningTachePeriodique({
+      await creerPlanningsTachesPeriodiques(idsACreer.map((idLieu) => ({
         id_tache: tache.id,
         id_lieu: idLieu,
         id_executant: null,
@@ -171,8 +173,9 @@ export function TachesPeriodiques() {
         est_reportee: false,
         motif_report: null,
         est_actif: true,
-      })
-      toast.success('Occurrence creee.')
+      })))
+      const ignores = idsLieux.length - idsACreer.length
+      toast.success(`${idsACreer.length} echeance(s) creee(s)${ignores > 0 ? `, ${ignores} deja existante(s) ignoree(s)` : ''}.`)
       setOccurrence(null)
       await charger()
     } catch (error) {
@@ -472,16 +475,35 @@ export function TachesPeriodiques() {
   )
 }
 
-function OccurrenceModal({ tache, lieux, onClose, onSubmit }: { tache: TachePeriodique; lieux: Array<{ id: string; nom: string; id_categorie: string; est_actif: boolean; batiment?: { nom: string } | null }>; onClose: () => void; onSubmit: (tache: TachePeriodique, idLieu: string, dateEcheance: string) => Promise<void> }) {
-  const [idLieu, setIdLieu] = useState('')
+function OccurrenceModal({ tache, lieux, onClose, onSubmit }: { tache: TachePeriodique; lieux: Array<{ id: string; nom: string; id_categorie: string; est_actif: boolean; batiment?: { nom: string } | null }>; onClose: () => void; onSubmit: (tache: TachePeriodique, idsLieux: string[], dateEcheance: string) => Promise<void> }) {
+  const [idsLieux, setIdsLieux] = useState<string[]>([])
+  const [rechercheLieu, setRechercheLieu] = useState('')
   const [date, setDate] = useState(formatDateInput(new Date()))
   const [soumission, setSoumission] = useState(false)
   const lieuxCompatibles = lieux.filter((lieu) => lieu.est_actif && (!tache.id_categorie_lieu || lieu.id_categorie === tache.id_categorie_lieu))
+  const terme = rechercheLieu.trim().toLowerCase()
+  const lieuxAffiches = lieuxCompatibles.filter((lieu) => {
+    if (!terme) return true
+    return [lieu.nom, lieu.batiment?.nom].filter(Boolean).join(' ').toLowerCase().includes(terme)
+  })
+  const tousAffichesSelectionnes = lieuxAffiches.length > 0 && lieuxAffiches.every((lieu) => idsLieux.includes(lieu.id))
+
+  function basculerLieu(idLieu: string, coche: boolean) {
+    setIdsLieux((selection) => coche ? Array.from(new Set([...selection, idLieu])) : selection.filter((id) => id !== idLieu))
+  }
+
+  function basculerTousAffiches(coche: boolean) {
+    const idsAffiches = lieuxAffiches.map((lieu) => lieu.id)
+    setIdsLieux((selection) => {
+      if (coche) return Array.from(new Set([...selection, ...idsAffiches]))
+      return selection.filter((id) => !idsAffiches.includes(id))
+    })
+  }
 
   async function creer() {
     setSoumission(true)
     try {
-      await onSubmit(tache, idLieu, date)
+      await onSubmit(tache, idsLieux, date)
     } finally {
       setSoumission(false)
     }
@@ -490,17 +512,37 @@ function OccurrenceModal({ tache, lieux, onClose, onSubmit }: { tache: TachePeri
   return (
     <Modal title="Creer une echeance" onClose={onClose}>
       <p className="text-sm text-slate-600">{tache.nom}</p>
-      <Champ label="Lieu">
-        <select value={idLieu} onChange={(e) => setIdLieu(e.target.value)} className={inputClass}>
-          <option value="">Choisir</option>
-          {lieuxCompatibles.map((lieu) => <option key={lieu.id} value={lieu.id}>{lieu.nom}{lieu.batiment ? ` (${lieu.batiment.nom})` : ''}</option>)}
-        </select>
+      <Champ label="Lieux">
+        <div className="rounded-md border border-slate-300 bg-white">
+          <div className="border-b border-slate-200 p-2">
+            <input
+              value={rechercheLieu}
+              onChange={(e) => setRechercheLieu(e.target.value)}
+              placeholder="Rechercher un lieu..."
+              className="h-9 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+            />
+            <label className="mt-2 flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <input type="checkbox" checked={tousAffichesSelectionnes} onChange={(e) => basculerTousAffiches(e.target.checked)} />
+              Selectionner les lieux affiches
+            </label>
+          </div>
+          <div className="max-h-64 overflow-y-auto p-2">
+            {lieuxAffiches.map((lieu) => (
+              <label key={lieu.id} className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                <input type="checkbox" checked={idsLieux.includes(lieu.id)} onChange={(e) => basculerLieu(lieu.id, e.target.checked)} />
+                <span>{lieu.nom}{lieu.batiment ? ` (${lieu.batiment.nom})` : ''}</span>
+              </label>
+            ))}
+            {lieuxAffiches.length === 0 && <p className="p-4 text-center text-sm text-slate-500">Aucun lieu trouve.</p>}
+          </div>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">{idsLieux.length} lieu(x) selectionne(s)</p>
         {lieuxCompatibles.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun lieu dans cette categorie.</p>}
       </Champ>
       <Champ label="Date echeance"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} /></Champ>
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" onClick={onClose} className="rounded-md border px-3 py-2 text-sm font-semibold">Annuler</button>
-        <button type="button" disabled={soumission} onClick={() => void creer()} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{soumission ? 'Creation...' : 'Creer'}</button>
+        <button type="button" disabled={soumission || idsLieux.length === 0} onClick={() => void creer()} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{soumission ? 'Creation...' : 'Creer'}</button>
       </div>
     </Modal>
   )
