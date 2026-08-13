@@ -38,6 +38,7 @@ export function TachesPeriodiques() {
   const [report, setReport] = useState<TachePeriodiquePlanning | null>(null)
   const [occurrence, setOccurrence] = useState<TachePeriodique | null>(null)
   const [executantsProposition, setExecutantsProposition] = useState<Record<string, string>>({})
+  const [idPlanningAAttribuer, setIdPlanningAAttribuer] = useState<string | null>(null)
   const { estAdmin } = useAuth()
   const {
     taches,
@@ -76,6 +77,10 @@ export function TachesPeriodiques() {
   const planningAvenir = useMemo(
     () => planningTrie.filter((item) => item.est_actif && !item.date_realisation && item.date_echeance > aujourdHui),
     [aujourdHui, planningTrie],
+  )
+  const propositionsAffichees = useMemo(
+    () => idPlanningAAttribuer ? propositions.filter((proposition) => proposition.planning.id === idPlanningAAttribuer) : propositions,
+    [idPlanningAAttribuer, propositions],
   )
 
   function demarrerEdition(tache: TachePeriodique) {
@@ -384,7 +389,7 @@ export function TachesPeriodiques() {
                               {['A_FAIRE', 'EN_COURS', 'BLOQUE', 'ANNULEE', 'TERMINE'].map((etat) => <option key={etat} value={etat}>{libelleEtatTache(etat)}</option>)}
                             </select>
                           ) : (
-                            <button onClick={() => setOnglet('propositions')} className={iconButton}>Attribuer</button>
+                            <button onClick={() => { setIdPlanningAAttribuer(item.id); setOnglet('propositions') }} className={iconButton}>Attribuer</button>
                           )}
                           {peutReporterTache(item) && <button onClick={() => setReport(item)} className={iconButton}>Reporter</button>}
                         </div>
@@ -430,8 +435,15 @@ export function TachesPeriodiques() {
 
       {onglet === 'propositions' && (
         <div className="space-y-3">
-          {propositions.length === 0 && <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-slate-500">Aucune proposition disponible.</div>}
-          {propositions.map((proposition) => {
+          {idPlanningAAttribuer && (
+            <div className="flex justify-end">
+              <button type="button" onClick={() => setIdPlanningAAttribuer(null)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+                Voir toutes les propositions
+              </button>
+            </div>
+          )}
+          {propositionsAffichees.length === 0 && <div className="rounded-lg border border-slate-200 bg-white p-6 text-center text-slate-500">Aucune proposition disponible pour cette tache.</div>}
+          {propositionsAffichees.map((proposition) => {
             const cle = `${proposition.planning.id}-${proposition.executant.id}`
             const idExecutant = executantsProposition[cle] || proposition.executant.id
 
@@ -441,9 +453,6 @@ export function TachesPeriodiques() {
                   <div>
                     <p className="font-semibold text-slate-950">{proposition.planning.tache?.nom} - {proposition.planning.lieu?.nom}</p>
                     <p className="text-sm text-slate-500">{formatDateCourte(proposition.planning.date_echeance)} - {proposition.planning.tache?.points_estimes} pts - {proposition.classification.label}</p>
-                    <p className={proposition.surcharge ? 'mt-1 text-xs font-semibold text-rose-700' : 'mt-1 text-xs font-semibold text-teal-700'}>
-                      Charge proposee : {proposition.pointsApres}/{proposition.capacite ?? 'infini'} pts{proposition.surcharge ? ' - surcharge autorisee' : ''}
-                    </p>
                     {!proposition.lieuDisponible && (
                       <p className="mt-1 text-xs font-semibold text-amber-700">Disponibilite a verifier</p>
                     )}
