@@ -441,6 +441,9 @@ export function TachesPeriodiques() {
                   <div>
                     <p className="font-semibold text-slate-950">{proposition.planning.tache?.nom} - {proposition.planning.lieu?.nom}</p>
                     <p className="text-sm text-slate-500">{formatDateCourte(proposition.planning.date_echeance)} - {proposition.planning.tache?.points_estimes} pts - {proposition.classification.label}</p>
+                    <p className={proposition.surcharge ? 'mt-1 text-xs font-semibold text-rose-700' : 'mt-1 text-xs font-semibold text-teal-700'}>
+                      Charge proposee : {proposition.pointsApres}/{proposition.capacite ?? 'infini'} pts{proposition.surcharge ? ' - surcharge autorisee' : ''}
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <select value={idExecutant} onChange={(e) => setExecutantsProposition({ ...executantsProposition, [cle]: e.target.value })} className={inputClass}>

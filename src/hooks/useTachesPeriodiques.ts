@@ -25,6 +25,10 @@ export type PropositionTache = {
   classification: ClassificationTache
   executant: Executant
   pointsLibres: number | null
+  charge: number
+  capacite: number | null
+  pointsApres: number
+  surcharge: boolean
   score: number
 }
 
@@ -108,12 +112,6 @@ export function useTachesPeriodiques() {
             const pointsLibres = capacite === null ? null : capacite - charge
             return { executant, pointsLibres, charge, capacite }
           })
-          .filter((candidat) => candidat.pointsLibres === null || candidat.pointsLibres >= (item.tache?.points_estimes || 0))
-          .filter((candidat) => {
-            if (candidat.capacite === null) return true
-            if (candidat.charge < candidat.capacite * 0.9) return true
-            return item.tache?.nature === 'obligatoire' || item.tache?.priorite === 'haute'
-          })
 
         const meilleurCandidat = candidats.sort((a, b) => {
           if (a.charge !== b.charge) return a.charge - b.charge
@@ -132,6 +130,10 @@ export function useTachesPeriodiques() {
           classification,
           executant: meilleurCandidat.executant,
           pointsLibres: meilleurCandidat.pointsLibres,
+          charge: meilleurCandidat.charge,
+          capacite: meilleurCandidat.capacite,
+          pointsApres: meilleurCandidat.charge + (item.tache?.points_estimes || 0),
+          surcharge: meilleurCandidat.capacite !== null && meilleurCandidat.charge + (item.tache?.points_estimes || 0) > meilleurCandidat.capacite,
           score: scoreTache(item, classification),
         }]
       })
