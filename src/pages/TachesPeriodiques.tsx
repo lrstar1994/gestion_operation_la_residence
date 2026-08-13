@@ -454,7 +454,7 @@ export function TachesPeriodiques() {
                     <p className="font-semibold text-slate-950">{proposition.planning.tache?.nom} - {proposition.planning.lieu?.nom}</p>
                     <p className="text-sm text-slate-500">{formatDateCourte(proposition.planning.date_echeance)} - {proposition.planning.tache?.points_estimes} pts - {proposition.classification.label}</p>
                     {proposition.dateAffectation !== proposition.planning.date_echeance && (
-                      <p className="mt-1 text-xs font-semibold text-teal-700">Attribution basee sur le {formatDateCourte(proposition.dateAffectation)}</p>
+                      <p className="mt-1 text-xs font-semibold text-teal-700">A traiter le {formatDateCourte(proposition.dateAffectation)}</p>
                     )}
                     {!proposition.lieuDisponible && (
                       <p className="mt-1 text-xs font-semibold text-amber-700">Disponibilite a verifier</p>
