@@ -23,6 +23,7 @@ export type ClassificationTache = {
 export type PropositionTache = {
   planning: TachePeriodiquePlanning
   classification: ClassificationTache
+  dateAffectation: string
   executant: Executant
   pointsLibres: number | null
   charge: number
@@ -103,12 +104,13 @@ export function useTachesPeriodiques() {
       .filter((item) => item.est_actif && item.tache?.est_actif && !item.date_realisation && !item.id_executant)
       .flatMap((item) => {
         const classification = classifications.get(item.id) || classifierTache(item.date_echeance, item.tache?.delai_alerte_jours ?? 3)
-        const lieuDisponible = estLieuDisponible(item.lieu, item.date_echeance, planningChambres)
+        const dateAffectation = item.date_echeance < aujourdHui ? aujourdHui : item.date_echeance
+        const lieuDisponible = estLieuDisponible(item.lieu, dateAffectation, planningChambres)
         const candidats = executants
           .filter((executant) => estExecutantCompatibleAvecLieu(executant, item.lieu))
-          .filter((executant) => estExecutantEnTravail(executant.id, item.date_echeance, planningExecutants))
+          .filter((executant) => estExecutantEnTravail(executant.id, dateAffectation, planningExecutants))
           .map((executant) => {
-            const charge = charges.get(`${executant.id}-${item.date_echeance}`) || 0
+            const charge = charges.get(`${executant.id}-${dateAffectation}`) || 0
             const capacite = executant.domaine?.capacite_max ?? null
             const pointsLibres = capacite === null ? null : capacite - charge
             return { executant, pointsLibres, charge, capacite }
@@ -129,6 +131,7 @@ export function useTachesPeriodiques() {
         return [{
           planning: item,
           classification,
+          dateAffectation,
           executant: meilleurCandidat.executant,
           pointsLibres: meilleurCandidat.pointsLibres,
           charge: meilleurCandidat.charge,
@@ -140,7 +143,7 @@ export function useTachesPeriodiques() {
         }]
       })
       .sort((a, b) => b.score - a.score)
-  }, [classifications, executants, planning, planningChambres, planningExecutants])
+  }, [aujourdHui, classifications, executants, planning, planningChambres, planningExecutants])
 
   return {
     taches,
