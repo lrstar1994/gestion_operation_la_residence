@@ -5,6 +5,7 @@ import {
   ArrowUp,
   Camera,
   CheckCircle2,
+  Clock,
   Download,
   Eye,
   GripVertical,
@@ -26,6 +27,7 @@ import {
   ajouterCommentaireIntervention,
   compterPhotosParType,
   creerInterventionMaintenance,
+  listerHistoriqueOrdreInterventionsMaintenance,
   listerInterventionsMaintenance,
   listerTypesInterventionMaintenance,
   modifierInterventionMaintenance,
@@ -37,6 +39,7 @@ import {
   urlPubliquePhoto,
   type InterventionMaintenance,
   type InterventionPayload,
+  type HistoriqueOrdreInterventionMaintenance,
   type PhotoIntervention,
   type PrioriteIntervention,
   type TypeInterventionMaintenance,
@@ -70,6 +73,8 @@ export function InterventionsMaintenance() {
   const [sauvegardeOrdre, setSauvegardeOrdre] = useState(false)
   const [modalIntervention, setModalIntervention] = useState<{ mode: ModeModal; intervention?: InterventionMaintenance } | null>(null)
   const [detail, setDetail] = useState<InterventionMaintenance | null>(null)
+  const [historiqueOrdreType, setHistoriqueOrdreType] = useState<{ type: TypeInterventionMaintenance; items: HistoriqueOrdreInterventionMaintenance[] } | null>(null)
+  const [chargementHistoriqueOrdre, setChargementHistoriqueOrdre] = useState(false)
   const [upload, setUpload] = useState<InterventionMaintenance | null>(null)
   const [fermeture, setFermeture] = useState<InterventionMaintenance | null>(null)
   const { estAdmin } = useAuth()
@@ -120,19 +125,33 @@ export function InterventionsMaintenance() {
         if (prioriteFiltre !== 'tous' && intervention.priorite !== prioriteFiltre) return false
         if (lieuFiltre !== 'tous' && intervention.id_lieu !== lieuFiltre) return false
         if (typeFiltre !== 'tous' && intervention.id_type_intervention !== typeFiltre) return false
-        if (!terme) return true
-
-        return [
-          intervention.titre,
-          intervention.type_intervention?.nom,
-          intervention.description,
-          intervention.travail_a_faire,
-          intervention.lieu?.nom,
-          intervention.executant?.nom,
-        ].filter(Boolean).join(' ').toLowerCase().includes(terme)
+        return correspondRechercheIntervention(intervention, terme)
       })
       .sort((a, b) => comparerInterventionsParDebut(a, b))
   }, [etatFiltre, interventionsActives, lieuFiltre, prioriteFiltre, recherche, typeFiltre])
+
+  const filesParType = useMemo(() => {
+    const terme = recherche.trim().toLowerCase()
+
+    return typesIntervention
+      .map((type) => {
+        const interventionsType = interventionsActives
+          .filter((intervention) => intervention.id_type_intervention === type.id)
+          .filter((intervention) => {
+            if (etatFiltre !== 'tous' && intervention.etat?.nom !== etatFiltre) return false
+            if (prioriteFiltre !== 'tous' && intervention.priorite !== prioriteFiltre) return false
+            if (lieuFiltre !== 'tous' && intervention.id_lieu !== lieuFiltre) return false
+            return correspondRechercheIntervention(intervention, terme)
+          })
+
+        return {
+          type,
+          enCours: interventionsType.filter((intervention) => intervention.etat?.nom === 'EN_COURS').sort((a, b) => comparerInterventionsParDebut(a, b)),
+          file: interventionsType.filter((intervention) => etatsFileActive.includes(intervention.etat?.nom || '')).sort(comparerInterventionsParOrdre),
+        }
+      })
+      .filter((groupe) => groupe.enCours.length > 0 || groupe.file.length > 0)
+  }, [etatFiltre, interventionsActives, lieuFiltre, prioriteFiltre, recherche, typesIntervention])
 
   const interventionsDuType = useMemo(
     () => typeFiltre === 'tous' ? [] : interventionsActives.filter((intervention) => intervention.id_type_intervention === typeFiltre),
@@ -395,6 +414,23 @@ export function InterventionsMaintenance() {
     }
   }
 
+  async function ouvrirHistoriqueOrdreType() {
+    if (!typeSelectionne) return
+
+    setChargementHistoriqueOrdre(true)
+    try {
+      const items = await listerHistoriqueOrdreInterventionsMaintenance({
+        idTypeIntervention: typeSelectionne.id,
+        limite: 80,
+      })
+      setHistoriqueOrdreType({ type: typeSelectionne, items })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Historique d'ordre impossible a charger.")
+    } finally {
+      setChargementHistoriqueOrdre(false)
+    }
+  }
+
   return (
     <section className="space-y-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -448,6 +484,10 @@ export function InterventionsMaintenance() {
               <p className="mt-1 text-sm text-slate-500">Glisse les lignes ou utilise les fleches. L'ordre est applique seulement apres validation.</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button type="button" disabled={chargementHistoriqueOrdre} onClick={() => void ouvrirHistoriqueOrdreType()} className={secondaryButton}>
+                {chargementHistoriqueOrdre ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                Historique d'ordre
+              </button>
               {ordreModifie && <button type="button" onClick={() => setOrdreLocalIds(ordreBaseIds)} className={secondaryButton}>Annuler</button>}
               <button type="button" disabled={!ordreModifie || sauvegardeOrdre} onClick={() => void enregistrerOrdre()} className={primaryButton}>
                 {sauvegardeOrdre ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -458,25 +498,54 @@ export function InterventionsMaintenance() {
         )}
 
         {!typeSelectionne && (
-          <div className="border-b border-slate-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Choisis un type de maintenance pour organiser manuellement la file d'interventions.
+          <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <h2 className="font-semibold text-slate-950">Vue tous types</h2>
+            <p className="mt-1 text-sm text-slate-500">Chaque type garde sa propre file. Aucun ordre global n'est fabrique entre les metiers.</p>
           </div>
         )}
 
         <div className="divide-y divide-slate-200">
           {chargement && <div className="flex justify-center p-10 text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Chargement...</div>}
 
-          {!chargement && !typeSelectionne && interventionsFiltrees.length === 0 && <div className="p-10 text-center text-slate-500">Aucune intervention.</div>}
-          {!chargement && !typeSelectionne && interventionsFiltrees.map((intervention) => (
-            <InterventionRow
-              key={intervention.id}
-              intervention={intervention}
-              onVoir={() => setDetail(intervention)}
-              onModifier={() => setModalIntervention({ mode: 'edition', intervention })}
-              onPhotos={() => setUpload(intervention)}
-              onSupprimer={estAdmin() ? () => void supprimerIntervention(intervention) : undefined}
-            />
-          ))}
+          {!chargement && !typeSelectionne && filesParType.length === 0 && <div className="p-10 text-center text-slate-500">Aucune intervention.</div>}
+          {!chargement && !typeSelectionne && filesParType.length > 0 && (
+            <div className="grid gap-4 bg-slate-50 p-4 xl:grid-cols-2 2xl:grid-cols-3">
+              {filesParType.map((groupe) => (
+                <div key={groupe.type.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-white px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-semibold text-slate-950">{groupe.type.nom}</h3>
+                      <button type="button" onClick={() => setTypeFiltre(groupe.type.id)} className="text-sm font-semibold text-teal-700 hover:text-teal-800">Organiser</button>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">{groupe.file.length} a faire, {groupe.enCours.length} en cours</p>
+                  </div>
+                  <div className="divide-y divide-slate-200">
+                    {groupe.enCours.length > 0 && (
+                      <div className="bg-orange-50/60 px-3 py-2 text-xs font-semibold text-orange-800">En cours</div>
+                    )}
+                    {groupe.enCours.map((intervention) => (
+                      <InterventionRowCompact
+                        key={intervention.id}
+                        intervention={intervention}
+                        onVoir={() => setDetail(intervention)}
+                      />
+                    ))}
+                    {groupe.file.length > 0 && (
+                      <div className="bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">A faire</div>
+                    )}
+                    {groupe.file.map((intervention, index) => (
+                      <InterventionRowCompact
+                        key={intervention.id}
+                        intervention={intervention}
+                        ordre={index + 1}
+                        onVoir={() => setDetail(intervention)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {!chargement && typeSelectionne && (
             <div className="divide-y divide-slate-200">
@@ -555,6 +624,14 @@ export function InterventionsMaintenance() {
           onSupprimerPhoto={(photo) => void supprimerPhoto(photo)}
           onTelechargerPhoto={(photo) => void telechargerPhoto(photo)}
           onCommenter={(commentaire) => void ajouterCommentaire(detail.id, commentaire)}
+        />
+      )}
+
+      {historiqueOrdreType && (
+        <HistoriqueOrdreModal
+          title={`Historique d'ordre - ${historiqueOrdreType.type.nom}`}
+          items={historiqueOrdreType.items}
+          onClose={() => setHistoriqueOrdreType(null)}
         />
       )}
 
@@ -671,6 +748,89 @@ function InterventionRow({
   )
 }
 
+function InterventionRowCompact({ intervention, ordre, onVoir }: {
+  intervention: InterventionMaintenance
+  ordre?: number
+  onVoir: () => void
+}) {
+  return (
+    <button type="button" onClick={onVoir} className="block w-full px-3 py-3 text-left hover:bg-slate-50">
+      <div className="flex items-start gap-3">
+        {ordre !== undefined && (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-teal-700 text-xs font-bold text-white">{ordre}</span>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge tone={couleurPriorite(intervention.priorite)}>{libellePriorite(intervention.priorite)}</Badge>
+            <Badge tone={couleurEtat(intervention.etat?.nom)}>{libelleEtat(intervention.etat?.nom)}</Badge>
+          </div>
+          <p className="mt-1 truncate text-sm font-semibold text-slate-950">{intervention.titre}</p>
+          <p className="mt-0.5 truncate text-xs text-slate-500">{nomLieu(intervention.lieu)} - {intervention.executant?.nom || 'Non attribue'}</p>
+          <AlertesIntervention intervention={intervention} />
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function HistoriqueOrdreCourt({ items, chargement }: { items: HistoriqueOrdreInterventionMaintenance[]; chargement: boolean }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3">
+      <p className="text-xs font-semibold uppercase text-slate-400">Historique d'ordre</p>
+      {chargement && <p className="mt-2 text-sm text-slate-500">Chargement...</p>}
+      {!chargement && items.length === 0 && <p className="mt-2 text-sm text-slate-500">Aucun changement d'ordre.</p>}
+      {!chargement && items.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {items.map((item) => (
+            <div key={item.id} className="text-sm">
+              <p className="font-medium text-slate-800">{formatPositionOrdre(item.ancienne_position)} vers {formatPositionOrdre(item.nouvelle_position)}</p>
+              <p className="text-xs text-slate-500">{formatDateHeure(item.created_at)} - {item.utilisateur?.nom || 'Utilisateur'}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function HistoriqueOrdreModal({ title, items, onClose }: {
+  title: string
+  items: HistoriqueOrdreInterventionMaintenance[]
+  onClose: () => void
+}) {
+  return (
+    <Modal title={title} onClose={onClose} maxWidth="max-w-4xl">
+      <div className="overflow-x-auto">
+        <table className="min-w-[760px] w-full divide-y divide-slate-200 text-sm">
+          <thead className="bg-slate-50">
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Date</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Intervention</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Ancienne position</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Nouvelle position</th>
+              <th className="px-3 py-2 text-left font-semibold text-slate-600">Utilisateur</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {items.length === 0 && (
+              <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-500">Aucun changement d'ordre.</td></tr>
+            )}
+            {items.map((item) => (
+              <tr key={item.id}>
+                <td className="px-3 py-3 text-slate-600">{formatDateHeure(item.created_at)}</td>
+                <td className="px-3 py-3 font-medium text-slate-900">{item.intervention?.titre || '-'}</td>
+                <td className="px-3 py-3 text-slate-600">{formatPositionOrdre(item.ancienne_position)}</td>
+                <td className="px-3 py-3 text-slate-600">{formatPositionOrdre(item.nouvelle_position)}</td>
+                <td className="px-3 py-3 text-slate-600">{item.utilisateur?.nom || '-'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Modal>
+  )
+}
+
 function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer, onChangerEtat, onSupprimerPhoto, onTelechargerPhoto, onCommenter }: {
   intervention: InterventionMaintenance
   etats: EtatMouvement[]
@@ -684,8 +844,35 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer
 }) {
   const [typeActif, setTypeActif] = useState<TypePhotoIntervention>('avant')
   const [commentaire, setCommentaire] = useState('')
+  const [historiqueOrdre, setHistoriqueOrdre] = useState<HistoriqueOrdreInterventionMaintenance[]>([])
+  const [chargementHistoriqueOrdre, setChargementHistoriqueOrdre] = useState(false)
   const photos = intervention.photos?.filter((photo) => photo.type_photo === typeActif) || []
   const ferme = estFermee(intervention)
+
+  useEffect(() => {
+    let actif = true
+
+    async function chargerHistoriqueOrdre() {
+      setChargementHistoriqueOrdre(true)
+      try {
+        const resultat = await listerHistoriqueOrdreInterventionsMaintenance({
+          idIntervention: intervention.id,
+          limite: 5,
+        })
+        if (actif) setHistoriqueOrdre(resultat)
+      } catch {
+        if (actif) setHistoriqueOrdre([])
+      } finally {
+        if (actif) setChargementHistoriqueOrdre(false)
+      }
+    }
+
+    void chargerHistoriqueOrdre()
+
+    return () => {
+      actif = false
+    }
+  }, [intervention.id])
 
   function envoyerCommentaire() {
     onCommenter(commentaire)
@@ -707,6 +894,7 @@ function DetailIntervention({ intervention, etats, onClose, onUpload, onTerminer
           <Info label="Executant" value={intervention.executant?.nom || 'Non attribue'} />
           {intervention.description && <Info label="Description" value={intervention.description} />}
           <Info label="Travail a faire" value={intervention.travail_a_faire || 'Non renseigne'} />
+          <HistoriqueOrdreCourt items={historiqueOrdre} chargement={chargementHistoriqueOrdre} />
 
           {!ferme && (
             <div className="space-y-2">
@@ -1061,7 +1249,7 @@ function libelleTypeIntervention(type?: TypeInterventionMaintenance | string | n
 }
 
 function libelleEtat(etat?: string) {
-  return { AFFECTE: 'Affecte', EN_COURS: 'En cours', BLOQUE: 'Bloque', TERMINE: 'Termine' }[etat || 'AFFECTE'] || etat || 'Affecte'
+  return { AFFECTE: 'A faire', EN_COURS: 'En cours', BLOQUE: 'Bloque', TERMINE: 'Termine' }[etat || 'AFFECTE'] || etat || 'A faire'
 }
 
 function libelleTypePhoto(type: TypePhotoIntervention) {
@@ -1085,6 +1273,10 @@ function formatDateHeure(date: string) {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(date))
 }
 
+function formatPositionOrdre(position: number | null) {
+  return position === null ? 'Retiree de la file' : `Position ${position}`
+}
+
 function formatPeriodeIntervention(intervention: InterventionMaintenance) {
   const debut = `${formatDate(intervention.date_intervention)}${intervention.heure_debut ? ` ${formatHeure(intervention.heure_debut)}` : ''}`
   const dateFin = intervention.date_fin || intervention.date_intervention
@@ -1099,6 +1291,19 @@ function comparerInterventionsParOrdre(a: InterventionMaintenance, b: Interventi
   const ordreB = b.ordre_realisation ?? Number.POSITIVE_INFINITY
   if (ordreA !== ordreB) return ordreA - ordreB
   return comparerInterventionsParDebut(a, b)
+}
+
+function correspondRechercheIntervention(intervention: InterventionMaintenance, terme: string) {
+  if (!terme) return true
+
+  return [
+    intervention.titre,
+    intervention.type_intervention?.nom,
+    intervention.description,
+    intervention.travail_a_faire,
+    intervention.lieu?.nom,
+    intervention.executant?.nom,
+  ].filter(Boolean).join(' ').toLowerCase().includes(terme)
 }
 
 function comparerInterventionsParDebut(a: InterventionMaintenance, b: InterventionMaintenance) {

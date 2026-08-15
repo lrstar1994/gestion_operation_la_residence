@@ -35,6 +35,23 @@ export type CommentaireIntervention = {
   } | null
 }
 
+export type HistoriqueOrdreInterventionMaintenance = {
+  id: string
+  id_intervention: string | null
+  id_type_intervention: string | null
+  ancienne_position: number | null
+  nouvelle_position: number | null
+  modifie_par: string | null
+  created_at: string
+  intervention?: Pick<InterventionMaintenance, 'id' | 'titre'> | null
+  type_intervention?: TypeInterventionMaintenance | null
+  utilisateur?: {
+    id: string
+    nom: string
+    email: string
+  } | null
+}
+
 export type InterventionMaintenance = {
   id: string
   titre: string
@@ -95,6 +112,8 @@ export type PhotoPayload = {
 const bucketInterventions = 'interventions'
 const selectPhoto = 'id,id_intervention,url_storage,nom_fichier,type_photo,commentaire,created_at'
 const selectCommentaire = 'id,id_intervention,id_utilisateur,commentaire,created_at,utilisateur:utilisateurs(id,nom,email)'
+const selectHistoriqueOrdre =
+  'id,id_intervention,id_type_intervention,ancienne_position,nouvelle_position,modifie_par,created_at,intervention:intervention_maintenance(id,titre),type_intervention:type_intervention_maintenance(id,nom,est_actif),utilisateur:utilisateurs(id,nom,email)'
 const selectIntervention =
   `id,titre,description,travail_a_faire,id_type_intervention,id_lieu,date_intervention,heure_debut,date_fin,heure_fin,priorite,id_executant,id_etat,commentaire_fermeture,date_fermeture,ordre_realisation,position_updated_at,position_updated_by,est_actif,created_at,updated_at,` +
   `lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),` +
@@ -158,6 +177,27 @@ export async function reordonnerInterventionsMaintenance(idTypeIntervention: str
   })
 
   if (error) throw error
+}
+
+export async function listerHistoriqueOrdreInterventionsMaintenance(filtres?: { idTypeIntervention?: string; idIntervention?: string; limite?: number }) {
+  let requete = supabase
+    .from('historique_ordre_intervention_maintenance')
+    .select(selectHistoriqueOrdre)
+    .order('created_at', { ascending: false })
+    .limit(filtres?.limite ?? 50)
+
+  if (filtres?.idTypeIntervention) {
+    requete = requete.eq('id_type_intervention', filtres.idTypeIntervention)
+  }
+
+  if (filtres?.idIntervention) {
+    requete = requete.eq('id_intervention', filtres.idIntervention)
+  }
+
+  const { data, error } = await requete.returns<HistoriqueOrdreInterventionMaintenance[]>()
+
+  if (error) throw error
+  return data
 }
 
 export async function supprimerInterventionMaintenance(id: string) {

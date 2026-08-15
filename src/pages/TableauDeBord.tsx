@@ -446,7 +446,7 @@ function pointsDuJour(charge: ChargeExecutant) {
 }
 
 function libelleEtat(etat?: string) {
-  return { AFFECTE: 'Affecte', A_FAIRE: 'A faire', EN_COURS: 'En cours', BLOQUE: 'Bloque', TERMINE: 'Termine', ANNULEE: 'Annule' }[etat || 'AFFECTE'] || etat || 'Affecte'
+  return { AFFECTE: 'A faire', A_FAIRE: 'A faire', EN_COURS: 'En cours', BLOQUE: 'Bloque', TERMINE: 'Termine', ANNULEE: 'Annule' }[etat || 'AFFECTE'] || etat || 'A faire'
 }
 
 function nomLieu(lieu: { nom: string; batiment?: { code: string } | null } | null | undefined) {

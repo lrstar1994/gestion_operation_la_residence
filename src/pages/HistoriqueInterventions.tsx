@@ -413,7 +413,7 @@ function couleurEtat(etat?: string): 'red' | 'orange' | 'green' | 'slate' {
 
 function libelleEtat(etat?: string) {
   return {
-    AFFECTE: 'Affecte',
+    AFFECTE: 'A faire',
     EN_COURS: 'En cours',
     BLOQUE: 'Bloque',
     TERMINE: 'Termine',
