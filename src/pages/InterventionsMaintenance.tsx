@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   Camera,
   CheckCircle2,
   Download,
   Eye,
+  GripVertical,
   ImagePlus,
   Loader2,
   Pencil,
   Plus,
   RefreshCcw,
+  Save,
   Search,
   Trash2,
   UploadCloud,
@@ -25,6 +29,7 @@ import {
   listerInterventionsMaintenance,
   listerTypesInterventionMaintenance,
   modifierInterventionMaintenance,
+  reordonnerInterventionsMaintenance,
   supprimerInterventionMaintenance,
   supprimerPhotoIntervention,
   telechargerPhotoIntervention,
@@ -42,11 +47,11 @@ import { listerEtatsMouvement, type EtatMouvement } from '../api/planningChambre
 import { useAuth } from '../hooks/useAuth'
 
 type ModeModal = 'creation' | 'edition'
-type OrdreTri = 'recent' | 'ancien'
 
 const priorites: PrioriteIntervention[] = ['basse', 'normale', 'urgente']
 const typesPhotoVisibles: TypePhotoIntervention[] = ['avant', 'progression', 'apres']
 const etatsIntervention = ['AFFECTE', 'EN_COURS', 'BLOQUE']
+const etatsFileActive = ['AFFECTE', 'BLOQUE']
 
 export function InterventionsMaintenance() {
   const [interventions, setInterventions] = useState<InterventionMaintenance[]>([])
@@ -60,7 +65,9 @@ export function InterventionsMaintenance() {
   const [prioriteFiltre, setPrioriteFiltre] = useState('tous')
   const [lieuFiltre, setLieuFiltre] = useState('tous')
   const [typeFiltre, setTypeFiltre] = useState('tous')
-  const [ordreTri, setOrdreTri] = useState<OrdreTri>('recent')
+  const [ordreLocalIds, setOrdreLocalIds] = useState<string[]>([])
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [sauvegardeOrdre, setSauvegardeOrdre] = useState(false)
   const [modalIntervention, setModalIntervention] = useState<{ mode: ModeModal; intervention?: InterventionMaintenance } | null>(null)
   const [detail, setDetail] = useState<InterventionMaintenance | null>(null)
   const [upload, setUpload] = useState<InterventionMaintenance | null>(null)
@@ -96,8 +103,13 @@ export function InterventionsMaintenance() {
   }, [charger])
 
   const interventionsActives = useMemo(
-    () => interventions.filter((intervention) => intervention.etat?.nom !== 'TERMINE'),
+    () => interventions.filter((intervention) => !['TERMINE', 'ANNULEE'].includes(intervention.etat?.nom || '')),
     [interventions],
+  )
+
+  const typeSelectionne = useMemo(
+    () => typesIntervention.find((type) => type.id === typeFiltre) || null,
+    [typeFiltre, typesIntervention],
   )
 
   const interventionsFiltrees = useMemo(() => {
@@ -119,8 +131,44 @@ export function InterventionsMaintenance() {
           intervention.executant?.nom,
         ].filter(Boolean).join(' ').toLowerCase().includes(terme)
       })
-      .sort((a, b) => comparerInterventionsParDebut(a, b, ordreTri))
-  }, [etatFiltre, interventionsActives, lieuFiltre, ordreTri, prioriteFiltre, recherche, typeFiltre])
+      .sort((a, b) => comparerInterventionsParDebut(a, b))
+  }, [etatFiltre, interventionsActives, lieuFiltre, prioriteFiltre, recherche, typeFiltre])
+
+  const interventionsDuType = useMemo(
+    () => typeFiltre === 'tous' ? [] : interventionsActives.filter((intervention) => intervention.id_type_intervention === typeFiltre),
+    [interventionsActives, typeFiltre],
+  )
+
+  const interventionsEnCours = useMemo(
+    () => interventionsDuType.filter((intervention) => intervention.etat?.nom === 'EN_COURS').sort((a, b) => comparerInterventionsParDebut(a, b)),
+    [interventionsDuType],
+  )
+
+  const interventionsFileBase = useMemo(
+    () => interventionsDuType.filter((intervention) => etatsFileActive.includes(intervention.etat?.nom || '')).sort(comparerInterventionsParOrdre),
+    [interventionsDuType],
+  )
+
+  const interventionsParId = useMemo(
+    () => new Map(interventionsFileBase.map((intervention) => [intervention.id, intervention])),
+    [interventionsFileBase],
+  )
+
+  const ordreBaseIds = useMemo(() => interventionsFileBase.map((intervention) => intervention.id), [interventionsFileBase])
+  const interventionsFileOrdonnee = useMemo(
+    () => ordreLocalIds.map((id) => interventionsParId.get(id)).filter((intervention): intervention is InterventionMaintenance => Boolean(intervention)),
+    [interventionsParId, ordreLocalIds],
+  )
+  const interventionsRetireesFile = useMemo(
+    () => interventionsFileBase.filter((intervention) => !ordreLocalIds.includes(intervention.id)),
+    [interventionsFileBase, ordreLocalIds],
+  )
+  const ordreModifie = typeFiltre !== 'tous' && !tableauxIdentiques(ordreLocalIds, ordreBaseIds)
+
+  useEffect(() => {
+    setOrdreLocalIds(ordreBaseIds)
+    setDragId(null)
+  }, [ordreBaseIds])
 
   function interventionMaj(intervention: InterventionMaintenance) {
     setInterventions((liste) => liste.map((item) => item.id === intervention.id ? intervention : item))
@@ -292,6 +340,61 @@ export function InterventionsMaintenance() {
     }
   }
 
+  function deplacerIntervention(id: string, direction: -1 | 1) {
+    setOrdreLocalIds((ids) => {
+      const index = ids.indexOf(id)
+      const nouvelIndex = index + direction
+      if (index < 0 || nouvelIndex < 0 || nouvelIndex >= ids.length) return ids
+
+      const copie = [...ids]
+      const [item] = copie.splice(index, 1)
+      copie.splice(nouvelIndex, 0, item)
+      return copie
+    })
+  }
+
+  function deposerIntervention(idCible: string) {
+    if (!dragId || dragId === idCible) return
+
+    setOrdreLocalIds((ids) => {
+      const sourceIndex = ids.indexOf(dragId)
+      const cibleIndex = ids.indexOf(idCible)
+      if (sourceIndex < 0 || cibleIndex < 0) return ids
+
+      const copie = [...ids]
+      const [item] = copie.splice(sourceIndex, 1)
+      copie.splice(cibleIndex, 0, item)
+      return copie
+    })
+    setDragId(null)
+  }
+
+  function retirerDeLaFile(id: string) {
+    setOrdreLocalIds((ids) => ids.filter((item) => item !== id))
+  }
+
+  function ajouterDansLaFile(id: string) {
+    setOrdreLocalIds((ids) => ids.includes(id) ? ids : [...ids, id])
+  }
+
+  async function enregistrerOrdre() {
+    if (!typeSelectionne) {
+      toast.error('Choisis un type de maintenance pour enregistrer la file.')
+      return
+    }
+
+    setSauvegardeOrdre(true)
+    try {
+      await reordonnerInterventionsMaintenance(typeSelectionne.id, ordreLocalIds)
+      toast.success('Ordre des interventions enregistre.')
+      await charger()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Enregistrement de l'ordre impossible.")
+    } finally {
+      setSauvegardeOrdre(false)
+    }
+  }
+
   return (
     <section className="space-y-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -315,7 +418,7 @@ export function InterventionsMaintenance() {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="grid gap-2 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-[1fr_160px_160px_190px_190px_170px]">
+        <div className="grid gap-2 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-[1fr_160px_160px_190px_190px]">
           <label className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input value={recherche} onChange={(event) => setRecherche(event.target.value)} placeholder="Rechercher..." className={`${inputClass} pl-9`} />
@@ -336,16 +439,35 @@ export function InterventionsMaintenance() {
             <option value="tous">Tous les types</option>
             {typesIntervention.map((type) => <option key={type.id} value={type.id}>{type.nom}</option>)}
           </select>
-          <select value={ordreTri} onChange={(event) => setOrdreTri(event.target.value as OrdreTri)} className={inputClass}>
-            <option value="recent">Plus recent</option>
-            <option value="ancien">Plus ancien</option>
-          </select>
         </div>
+
+        {typeSelectionne && (
+          <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 p-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="font-semibold text-slate-950">File manuelle - {typeSelectionne.nom}</h2>
+              <p className="mt-1 text-sm text-slate-500">Glisse les lignes ou utilise les fleches. L'ordre est applique seulement apres validation.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {ordreModifie && <button type="button" onClick={() => setOrdreLocalIds(ordreBaseIds)} className={secondaryButton}>Annuler</button>}
+              <button type="button" disabled={!ordreModifie || sauvegardeOrdre} onClick={() => void enregistrerOrdre()} className={primaryButton}>
+                {sauvegardeOrdre ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Enregistrer l'ordre
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!typeSelectionne && (
+          <div className="border-b border-slate-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Choisis un type de maintenance pour organiser manuellement la file d'interventions.
+          </div>
+        )}
 
         <div className="divide-y divide-slate-200">
           {chargement && <div className="flex justify-center p-10 text-slate-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Chargement...</div>}
-          {!chargement && interventionsFiltrees.length === 0 && <div className="p-10 text-center text-slate-500">Aucune intervention.</div>}
-          {!chargement && interventionsFiltrees.map((intervention) => (
+
+          {!chargement && !typeSelectionne && interventionsFiltrees.length === 0 && <div className="p-10 text-center text-slate-500">Aucune intervention.</div>}
+          {!chargement && !typeSelectionne && interventionsFiltrees.map((intervention) => (
             <InterventionRow
               key={intervention.id}
               intervention={intervention}
@@ -355,6 +477,70 @@ export function InterventionsMaintenance() {
               onSupprimer={estAdmin() ? () => void supprimerIntervention(intervention) : undefined}
             />
           ))}
+
+          {!chargement && typeSelectionne && (
+            <div className="divide-y divide-slate-200">
+              {interventionsEnCours.length > 0 && (
+                <div className="bg-orange-50/60">
+                  <div className="px-4 py-3 text-sm font-semibold text-orange-800">En cours</div>
+                  {interventionsEnCours.map((intervention) => (
+                    <InterventionRow
+                      key={intervention.id}
+                      intervention={intervention}
+                      onVoir={() => setDetail(intervention)}
+                      onModifier={() => setModalIntervention({ mode: 'edition', intervention })}
+                      onPhotos={() => setUpload(intervention)}
+                      onSupprimer={estAdmin() ? () => void supprimerIntervention(intervention) : undefined}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div>
+                <div className="px-4 py-3 text-sm font-semibold text-slate-800">A faire dans l'ordre choisi</div>
+                {interventionsFileOrdonnee.length === 0 && <div className="p-8 text-center text-slate-500">Aucune intervention dans la file active.</div>}
+                {interventionsFileOrdonnee.map((intervention, index) => (
+                  <InterventionRow
+                    key={intervention.id}
+                    intervention={intervention}
+                    ordre={index + 1}
+                    peutMonter={index > 0}
+                    peutDescendre={index < interventionsFileOrdonnee.length - 1}
+                    draggable
+                    dragActif={dragId === intervention.id}
+                    onDragStart={() => setDragId(intervention.id)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => deposerIntervention(intervention.id)}
+                    onMonter={() => deplacerIntervention(intervention.id, -1)}
+                    onDescendre={() => deplacerIntervention(intervention.id, 1)}
+                    onRetirerFile={() => retirerDeLaFile(intervention.id)}
+                    onVoir={() => setDetail(intervention)}
+                    onModifier={() => setModalIntervention({ mode: 'edition', intervention })}
+                    onPhotos={() => setUpload(intervention)}
+                    onSupprimer={estAdmin() ? () => void supprimerIntervention(intervention) : undefined}
+                  />
+                ))}
+              </div>
+
+              {interventionsRetireesFile.length > 0 && (
+                <div className="bg-slate-50">
+                  <div className="px-4 py-3 text-sm font-semibold text-slate-700">Retirees de la file</div>
+                  {interventionsRetireesFile.map((intervention) => (
+                    <InterventionRow
+                      key={intervention.id}
+                      intervention={intervention}
+                      horsFile
+                      onAjouterFile={() => ajouterDansLaFile(intervention.id)}
+                      onVoir={() => setDetail(intervention)}
+                      onModifier={() => setModalIntervention({ mode: 'edition', intervention })}
+                      onPhotos={() => setUpload(intervention)}
+                      onSupprimer={estAdmin() ? () => void supprimerIntervention(intervention) : undefined}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -391,8 +577,40 @@ export function InterventionsMaintenance() {
   )
 }
 
-function InterventionRow({ intervention, onVoir, onModifier, onPhotos, onSupprimer }: {
+function InterventionRow({
+  intervention,
+  ordre,
+  horsFile = false,
+  peutMonter = false,
+  peutDescendre = false,
+  draggable = false,
+  dragActif = false,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onMonter,
+  onDescendre,
+  onRetirerFile,
+  onAjouterFile,
+  onVoir,
+  onModifier,
+  onPhotos,
+  onSupprimer,
+}: {
   intervention: InterventionMaintenance
+  ordre?: number
+  horsFile?: boolean
+  peutMonter?: boolean
+  peutDescendre?: boolean
+  draggable?: boolean
+  dragActif?: boolean
+  onDragStart?: () => void
+  onDragOver?: (event: React.DragEvent<HTMLElement>) => void
+  onDrop?: () => void
+  onMonter?: () => void
+  onDescendre?: () => void
+  onRetirerFile?: () => void
+  onAjouterFile?: () => void
   onVoir: () => void
   onModifier: () => void
   onPhotos: () => void
@@ -401,9 +619,25 @@ function InterventionRow({ intervention, onVoir, onModifier, onPhotos, onSupprim
   const compte = compterPhotosParType(intervention.photos)
 
   return (
-    <article className="p-4">
+    <article
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className={dragActif ? 'bg-teal-50 p-4 ring-2 ring-inset ring-teal-200' : 'p-4'}
+    >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
+        <div className="flex min-w-0 gap-3">
+          {ordre !== undefined && (
+            <div className="flex shrink-0 flex-col items-center gap-2">
+              <span className="flex h-10 w-10 items-center justify-center rounded-md bg-teal-700 text-sm font-bold text-white">{ordre}</span>
+              <GripVertical className="hidden h-4 w-4 text-slate-400 sm:block" />
+            </div>
+          )}
+          {horsFile && (
+            <div className="flex h-10 shrink-0 items-center rounded-md bg-slate-200 px-2 text-xs font-semibold text-slate-600">Hors file</div>
+          )}
+          <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={couleurPriorite(intervention.priorite)}>{libellePriorite(intervention.priorite)}</Badge>
             <Badge tone="slate">{libelleTypeIntervention(intervention.type_intervention)}</Badge>
@@ -419,8 +653,14 @@ function InterventionRow({ intervention, onVoir, onModifier, onPhotos, onSupprim
             <span>Progression: {compte.progression}</span>
             <span>Travaux fini: {compte.apres}</span>
           </p>
+          <AlertesIntervention intervention={intervention} />
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {onMonter && <button type="button" disabled={!peutMonter} onClick={onMonter} className={iconButton} title="Monter"><ArrowUp className="h-4 w-4" /></button>}
+          {onDescendre && <button type="button" disabled={!peutDescendre} onClick={onDescendre} className={iconButton} title="Descendre"><ArrowDown className="h-4 w-4" /></button>}
+          {onRetirerFile && <button type="button" onClick={onRetirerFile} className={iconButton}>Retirer</button>}
+          {onAjouterFile && <button type="button" onClick={onAjouterFile} className={iconButton}>Ajouter a la file</button>}
           <button type="button" onClick={onVoir} className={iconButton}><Eye className="h-4 w-4" />Voir</button>
           {!estFermee(intervention) && <button type="button" onClick={onModifier} className={iconButton}><Pencil className="h-4 w-4" />Modifier</button>}
           {!estFermee(intervention) && <button type="button" onClick={onPhotos} className={iconButton}><Camera className="h-4 w-4" />Photos</button>}
@@ -736,6 +976,27 @@ function VerificationPhoto({ ok, texte }: { ok: boolean; texte: string }) {
   return <div className={ok ? 'flex items-center gap-2 text-sm font-medium text-emerald-700' : 'flex items-center gap-2 text-sm font-medium text-rose-700'}>{ok ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}{texte}</div>
 }
 
+function AlertesIntervention({ intervention }: { intervention: InterventionMaintenance }) {
+  const alertes: Array<{ label: string; tone: 'red' | 'orange' | 'slate' }> = []
+  const jours = ageIntervention(intervention)
+
+  if (intervention.priorite === 'urgente') alertes.push({ label: 'Urgence', tone: 'red' })
+  if (intervention.etat?.nom === 'BLOQUE') alertes.push({ label: 'Bloquee', tone: 'red' })
+  if (jours >= 7) alertes.push({ label: `${jours} jours`, tone: 'orange' })
+
+  if (alertes.length === 0) return null
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {alertes.map((alerte) => (
+        <span key={alerte.label} className={alerte.tone === 'red' ? 'rounded-md bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-800 ring-1 ring-rose-100' : alerte.tone === 'orange' ? 'rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-100' : 'rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200'}>
+          {alerte.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function Info({ label, value }: { label: string; value: string }) {
   return <div><p className="text-xs font-semibold uppercase text-slate-400">{label}</p><p className="mt-1 text-sm text-slate-800">{value}</p></div>
 }
@@ -833,10 +1094,28 @@ function formatPeriodeIntervention(intervention: InterventionMaintenance) {
   return `${debut} -> ${fin}`
 }
 
-function comparerInterventionsParDebut(a: InterventionMaintenance, b: InterventionMaintenance, ordre: OrdreTri) {
+function comparerInterventionsParOrdre(a: InterventionMaintenance, b: InterventionMaintenance) {
+  const ordreA = a.ordre_realisation ?? Number.POSITIVE_INFINITY
+  const ordreB = b.ordre_realisation ?? Number.POSITIVE_INFINITY
+  if (ordreA !== ordreB) return ordreA - ordreB
+  return comparerInterventionsParDebut(a, b)
+}
+
+function comparerInterventionsParDebut(a: InterventionMaintenance, b: InterventionMaintenance) {
   const valeurA = valeurDateHeure(a.date_intervention, a.heure_debut)
   const valeurB = valeurDateHeure(b.date_intervention, b.heure_debut)
-  return ordre === 'recent' ? valeurB - valeurA : valeurA - valeurB
+  return valeurB - valeurA
+}
+
+function tableauxIdentiques(a: string[], b: string[]) {
+  return a.length === b.length && a.every((item, index) => item === b[index])
+}
+
+function ageIntervention(intervention: InterventionMaintenance) {
+  const debut = new Date(`${intervention.date_intervention}T00:00:00`).getTime()
+  const maintenant = new Date()
+  maintenant.setHours(0, 0, 0, 0)
+  return Math.max(0, Math.round((maintenant.getTime() - debut) / 86400000))
 }
 
 function valeurDateHeure(date: string, heure?: string | null) {

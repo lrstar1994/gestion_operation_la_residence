@@ -51,6 +51,9 @@ export type InterventionMaintenance = {
   id_etat: string
   commentaire_fermeture: string | null
   date_fermeture: string | null
+  ordre_realisation: number | null
+  position_updated_at: string | null
+  position_updated_by: string | null
   est_actif: boolean
   created_at: string
   updated_at: string
@@ -77,6 +80,7 @@ export type InterventionPayload = {
   id_etat: string
   commentaire_fermeture?: string | null
   date_fermeture?: string | null
+  ordre_realisation?: number | null
   est_actif: boolean
 }
 
@@ -92,7 +96,7 @@ const bucketInterventions = 'interventions'
 const selectPhoto = 'id,id_intervention,url_storage,nom_fichier,type_photo,commentaire,created_at'
 const selectCommentaire = 'id,id_intervention,id_utilisateur,commentaire,created_at,utilisateur:utilisateurs(id,nom,email)'
 const selectIntervention =
-  `id,titre,description,travail_a_faire,id_type_intervention,id_lieu,date_intervention,heure_debut,date_fin,heure_fin,priorite,id_executant,id_etat,commentaire_fermeture,date_fermeture,est_actif,created_at,updated_at,` +
+  `id,titre,description,travail_a_faire,id_type_intervention,id_lieu,date_intervention,heure_debut,date_fin,heure_fin,priorite,id_executant,id_etat,commentaire_fermeture,date_fermeture,ordre_realisation,position_updated_at,position_updated_by,est_actif,created_at,updated_at,` +
   `lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),` +
   `executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),` +
   `type_intervention:type_intervention_maintenance(id,nom,est_actif),` +
@@ -115,6 +119,8 @@ export async function listerInterventionsMaintenance() {
     .from('intervention_maintenance')
     .select(selectIntervention)
     .eq('est_actif', true)
+    .order('id_type_intervention', { ascending: true })
+    .order('ordre_realisation', { ascending: true, nullsFirst: false })
     .order('date_intervention', { ascending: false })
     .returns<InterventionMaintenance[]>()
 
@@ -143,6 +149,15 @@ export async function modifierInterventionMaintenance(id: string, payload: Parti
 
   if (error) throw error
   return normaliserIntervention(data)
+}
+
+export async function reordonnerInterventionsMaintenance(idTypeIntervention: string, idsInterventions: string[]) {
+  const { error } = await supabase.rpc('reordonner_interventions_maintenance', {
+    p_id_type_intervention: idTypeIntervention,
+    p_interventions: idsInterventions,
+  })
+
+  if (error) throw error
 }
 
 export async function supprimerInterventionMaintenance(id: string) {
