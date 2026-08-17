@@ -17,7 +17,7 @@ import {
   type TachePeriodiquePayload,
 } from '../api/tachesPeriodiques'
 import { useAuth } from '../hooks/useAuth'
-import { estExecutantCompatibleAvecLieu, type PropositionTache, useTachesPeriodiques } from '../hooks/useTachesPeriodiques'
+import { type PropositionTache, useTachesPeriodiques } from '../hooks/useTachesPeriodiques'
 
 type Onglet = 'referentiel' | 'suivi' | 'avenir' | 'propositions' | 'historique'
 
@@ -462,7 +462,7 @@ export function TachesPeriodiques() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <select value={idExecutant} onChange={(e) => setExecutantsProposition({ ...executantsProposition, [cle]: e.target.value })} className={inputClass}>
-                      {executants.filter((executant) => estExecutantCompatibleAvecLieu(executant, proposition.planning.lieu)).map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
+                      {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
                     </select>
                     <button onClick={() => void accepterProposition(proposition, idExecutant)} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white">Valider l'affectation</button>
                   </div>

@@ -107,7 +107,6 @@ export function useTachesPeriodiques() {
         const dateAffectation = item.date_echeance < aujourdHui ? aujourdHui : item.date_echeance
         const lieuDisponible = estLieuDisponible(item.lieu, dateAffectation, planningChambres)
         const candidats = executants
-          .filter((executant) => estExecutantCompatibleAvecLieu(executant, item.lieu))
           .filter((executant) => estExecutantEnTravail(executant.id, dateAffectation, planningExecutants))
           .map((executant) => {
             const charge = charges.get(`${executant.id}-${dateAffectation}`) || 0
