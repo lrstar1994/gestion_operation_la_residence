@@ -1297,11 +1297,9 @@ function VerificationPhoto({ ok, texte }: { ok: boolean; texte: string }) {
 
 function AlertesIntervention({ intervention }: { intervention: InterventionMaintenance }) {
   const alertes: Array<{ label: string; tone: 'red' | 'orange' | 'slate' }> = []
-  const jours = ageIntervention(intervention)
 
   if (intervention.priorite === 'urgente') alertes.push({ label: 'Urgence', tone: 'red' })
   if (intervention.etat?.nom === 'BLOQUE') alertes.push({ label: 'Bloquee', tone: 'red' })
-  if (jours >= 7) alertes.push({ label: `${jours} jours`, tone: 'orange' })
 
   if (alertes.length === 0) return null
 
@@ -1466,13 +1464,6 @@ function comparerInterventionsParDebut(a: InterventionMaintenance, b: Interventi
 
 function tableauxIdentiques(a: string[], b: string[]) {
   return a.length === b.length && a.every((item, index) => item === b[index])
-}
-
-function ageIntervention(intervention: InterventionMaintenance) {
-  const debut = new Date(`${intervention.date_intervention}T00:00:00`).getTime()
-  const maintenant = new Date()
-  maintenant.setHours(0, 0, 0, 0)
-  return Math.max(0, Math.round((maintenant.getTime() - debut) / 86400000))
 }
 
 function valeurDateHeure(date: string, heure?: string | null) {

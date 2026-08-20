@@ -5,7 +5,6 @@ import {
   DoorOpen,
   Loader2,
   RefreshCcw,
-  Sparkles,
   Wrench,
   Flame,
 } from 'lucide-react'
@@ -19,14 +18,6 @@ import { listerMouvementsSuivi } from '../api/suiviOperationnel'
 import { statistiquesChauffeEau, type StatistiquesChauffeEau } from '../api/chauffeEau'
 import { useAuth } from '../hooks/useAuth'
 import { calculerCharges, type ChargeExecutant, type PlanningChambre } from '../api/planningChambre'
-
-type Activite = {
-  id: string
-  date: string
-  action: string
-  detail: string
-  statut: string
-}
 
 export function TableauDeBord() {
   const { profil, estAdmin } = useAuth()
@@ -92,14 +83,20 @@ export function TableauDeBord() {
   const tachesAvenir = useMemo(() => taches.filter((item) => estTacheAvenir(item, aujourdHui)), [aujourdHui, taches])
   const interventionsActives = useMemo(() => interventions.filter((item) => item.etat?.nom !== 'TERMINE'), [interventions])
   const interventionsUrgentes = useMemo(() => interventionsActives.filter((item) => item.priorite === 'urgente'), [interventionsActives])
-  const interventionsNormales = useMemo(() => interventionsActives.filter((item) => item.priorite === 'normale'), [interventionsActives])
+  const interventionsBloquees = useMemo(() => interventionsActives.filter((item) => item.etat?.nom === 'BLOQUE'), [interventionsActives])
+  const interventionsNonAffectees = useMemo(() => interventionsActives.filter((item) => !item.id_executant), [interventionsActives])
+  const interventionsSurveillance = useMemo(
+    () => uniquesParId([...interventionsUrgentes, ...interventionsBloquees, ...interventionsNonAffectees]).slice(0, 6),
+    [interventionsBloquees, interventionsNonAffectees, interventionsUrgentes],
+  )
   const charges = useMemo(() => {
     const tachesDuJour = taches.filter((tache) => tache.date_echeance === aujourdHui)
     const historiqueDuJour = historiqueTaches.filter((tache) => tache.date_realisation === aujourdHui)
     return calculerCharges(mouvements, executants, tachesDuJour, historiqueDuJour)
   }, [aujourdHui, executants, historiqueTaches, mouvements, taches])
-  const activites = useMemo(() => construireActivites(mouvements, interventions, taches), [interventions, mouvements, taches])
   const surcharges = charges.filter((charge) => charge.surcharge)
+  const chargesDuJour = charges.filter((charge) => pointsDuJour(charge) > 0).slice(0, 8)
+  const mouvementsNonAffectes = mouvements.filter((mouvement) => !mouvement.id_executant).length
 
   if (!estAdmin()) {
     return (
@@ -134,39 +131,43 @@ export function TableauDeBord() {
             <KpiCard to="/planning-chambres" icon={DoorOpen} label="Occupation" value={`${occupation}%`} detail={`${chambresPlanifiees.size}/${chambres.length} chambres`} tone="teal" />
             <KpiCard to="/suivi-operationnel" icon={CheckCircle2} label="Taches du jour" value={String((repartitionEtats.AFFECTE || 0) + (repartitionEtats.EN_COURS || 0) + (repartitionEtats.BLOQUE || 0))} detail="mouvements a traiter" tone="blue" />
             <KpiCard to="/interventions-maintenance" icon={Wrench} label="Interventions en cours" value={String(interventionsActives.length)} detail={`${interventionsUrgentes.length} urgentes`} tone="orange" />
-            <KpiCard to="/planning-chambres" icon={ClipboardIcon} label="Planning du jour" value={String(mouvements.length)} detail={`${avancement}% termine`} tone="slate" />
+            <KpiCard to="/planning-chambres" icon={CheckCircle2} label="Planning du jour" value={String(mouvements.length)} detail={`${avancement}% termine`} tone="slate" />
             <KpiCard to="/taches-periodiques" icon={AlertTriangle} label="En retard" value={String(tachesEnRetard.length)} detail="taches periodiques" tone="red" />
             <KpiCard to="/gestion-chauffe-eau" icon={Flame} label="Chauffe-eau" value={String(statsChauffeEau.nonConformes)} detail={`${statsChauffeEau.controlesManquants} controles manquants`} tone={statsChauffeEau.nonConformes > 0 ? 'red' : 'teal'} />
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-            <Panel title="Suivi operationnel chambres" action={`${avancement}%`}>
+            <Panel title="Travaux chambres aujourd'hui" action={`${mouvements.length} mouvement(s)`}>
               <div className="space-y-4">
-                <ProgressBar value={avancement} tone={avancement > 80 ? 'green' : avancement > 40 ? 'orange' : 'red'} />
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   {['AFFECTE', 'EN_COURS', 'BLOQUE', 'TERMINE'].map((etat) => (
                     <EtatCounter key={etat} etat={etat} value={repartitionEtats[etat] || 0} />
                   ))}
+                  <EtatCounter etat="NON_AFFECTE" value={mouvementsNonAffectes} />
                 </div>
-                <div className="space-y-3">
-                  {charges.slice(0, 6).map((charge) => <ChargeRow key={charge.executant.id} charge={charge} />)}
-                  {charges.length === 0 && <Empty text="Aucune charge aujourd'hui." />}
-                </div>
+                <Link to="/suivi-operationnel" className={linkButton}>Voir le suivi operationnel</Link>
               </div>
             </Panel>
 
-            <Panel title="Alertes surcharge" action={String(surcharges.length)}>
+            <Panel title="Surcharges du jour" action={String(surcharges.length)}>
               <div className="space-y-3">
-                {surcharges.length === 0 && <Empty text="Aucune surcharge detectee." />}
+                {surcharges.length === 0 && <Empty text="Aucune surcharge aujourd'hui." />}
                 {surcharges.map((charge) => (
                   <div key={charge.executant.id} className="rounded-md border border-rose-200 bg-rose-50 p-3">
                     <p className="font-semibold text-rose-900">{charge.executant.nom}</p>
-                    <p className="text-sm text-rose-700">{pointsDuJour(charge)}/{charge.capaciteMax} pts. Reequilibrage conseille.</p>
+                    <p className="text-sm text-rose-700">{pointsDuJour(charge)}/{charge.capaciteMax} pts</p>
                   </div>
                 ))}
               </div>
             </Panel>
           </div>
+
+          <Panel title="Charge du jour" action={`${chargesDuJour.length} executant(s)`}>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {chargesDuJour.length === 0 && <Empty text="Aucune charge aujourd'hui." />}
+              {chargesDuJour.map((charge) => <ChargeCompact key={charge.executant.id} charge={charge} />)}
+            </div>
+          </Panel>
 
           <Panel title="Gestion energetique / Chauffe-eau" action={`${statsChauffeEau.nonConformes} non conforme(s)`}>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -178,10 +179,12 @@ export function TableauDeBord() {
           </Panel>
 
           <div className="grid gap-5 xl:grid-cols-2">
-            <Panel title="Interventions maintenance">
-              <div className="space-y-4">
-                <InterventionList title="Urgentes" interventions={interventionsUrgentes} tone="red" />
-                <InterventionList title="Normales" interventions={interventionsNormales} tone="orange" />
+            <Panel title="Maintenance a surveiller" action={`${interventionsSurveillance.length} signal(s)`}>
+              <InterventionList interventions={interventionsSurveillance} />
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <MiniCount label="Urgentes" value={interventionsUrgentes.length} />
+                <MiniCount label="Bloquees" value={interventionsBloquees.length} />
+                <MiniCount label="Non affectees" value={interventionsNonAffectees.length} />
               </div>
             </Panel>
 
@@ -192,29 +195,6 @@ export function TableauDeBord() {
               </div>
             </Panel>
           </div>
-
-          <Panel title="Activite recente">
-            <div className="grid gap-3 lg:grid-cols-2">
-              {activites.length === 0 && <Empty text="Aucune activite recente." />}
-              {activites.slice(0, 8).map((activite) => (
-                <div key={activite.id} className="flex gap-3 rounded-md bg-slate-50 p-3">
-                  <span className="mt-0.5 text-lg">{activite.statut}</span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">{activite.action}</p>
-                    <p className="truncate text-sm text-slate-500">{activite.detail}</p>
-                    <p className="text-xs text-slate-400">{formatDateHeure(activite.date)}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel title="Charge des executants">
-            <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-              {charges.map((charge) => <ChargeCard key={charge.executant.id} charge={charge} />)}
-              {charges.length === 0 && <Empty text="Aucun executant charge aujourd'hui." />}
-            </div>
-          </Panel>
         </>
       )}
     </section>
@@ -273,57 +253,38 @@ function MiniStat({ label, value, tone }: { label: string; value: number; tone: 
   )
 }
 
-function ChargeRow({ charge }: { charge: ChargeExecutant }) {
+function ChargeCompact({ charge }: { charge: ChargeExecutant }) {
   const pointsJour = pointsDuJour(charge)
 
   return (
-    <div>
-      <div className="mb-1 flex justify-between gap-3 text-sm">
-        <span className="font-medium text-slate-800">{charge.executant.nom}</span>
-        <span className="text-slate-500">{charge.capaciteMax === null ? `${pointsJour} pts / illimite` : `${pointsJour}/${charge.capaciteMax} pts`}</span>
+    <div className="rounded-md border border-slate-200 p-3">
+      <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+        <span className="truncate font-semibold text-slate-800">{charge.executant.nom}</span>
+        <Badge tone={couleurCharge(charge)}>{statutCharge(charge)}</Badge>
       </div>
+      <p className="mb-2 text-sm text-slate-500">{charge.capaciteMax === null ? `${pointsJour} pts / illimite` : `${pointsJour}/${charge.capaciteMax} pts`}</p>
       <ProgressBar value={(charge.taux ?? 0) * 100} tone={couleurCharge(charge)} />
     </div>
   )
 }
 
-function ChargeCard({ charge }: { charge: ChargeExecutant }) {
-  const pointsJour = pointsDuJour(charge)
-
+function InterventionList({ interventions }: { interventions: InterventionMaintenance[] }) {
   return (
-    <div className="rounded-lg border border-slate-200 p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-semibold text-slate-950">{charge.executant.nom}</p>
-          <p className="text-sm text-slate-500">{charge.capaciteMax === null ? `${pointsJour} points - capacite illimitee` : `${pointsJour}/${charge.capaciteMax} points`}</p>
-        </div>
-        <Badge tone={couleurCharge(charge)}>{statutCharge(charge)}</Badge>
-      </div>
-      <div className="mt-3">
-        <ProgressBar value={(charge.taux ?? 0) * 100} tone={couleurCharge(charge)} />
-      </div>
+    <div className="space-y-2">
+      {interventions.length === 0 && <Empty text="Aucune intervention a surveiller." />}
+      {interventions.map((intervention) => (
+        <Link key={intervention.id} to="/interventions-maintenance" className="block rounded-md border border-slate-200 p-3 hover:bg-slate-50">
+          <p className="truncate font-semibold text-slate-950">{intervention.titre}</p>
+          <p className="mt-1 truncate text-sm text-slate-500">{nomLieu(intervention.lieu)} - {intervention.type_intervention?.nom || 'Maintenance'}</p>
+          <p className="mt-1 truncate text-xs text-slate-400">{intervention.executant?.nom || 'Non affectee'}</p>
+        </Link>
+      ))}
     </div>
   )
 }
 
-function InterventionList({ title, interventions, tone }: { title: string; interventions: InterventionMaintenance[]; tone: 'red' | 'orange' }) {
-  return (
-    <div>
-      <h3 className="mb-2 text-sm font-semibold text-slate-700">{title}</h3>
-      <div className="space-y-2">
-        {interventions.length === 0 && <Empty text={`Aucune intervention ${title.toLowerCase()}.`} />}
-        {interventions.slice(0, 5).map((intervention) => (
-          <a key={intervention.id} href="/interventions-maintenance" className="block rounded-md border border-slate-200 p-3 hover:bg-slate-50">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-semibold text-slate-950">{intervention.titre}</p>
-              <Badge tone={tone}>{libelleEtat(intervention.etat?.nom)}</Badge>
-            </div>
-            <p className="mt-1 text-sm text-slate-500">{nomLieu(intervention.lieu)} - {formatDate(intervention.date_intervention)}</p>
-          </a>
-        ))}
-      </div>
-    </div>
-  )
+function MiniCount({ label, value }: { label: string; value: number }) {
+  return <div className="rounded-md bg-slate-50 p-2 text-center"><p className="text-lg font-bold text-slate-900">{value}</p><p className="text-xs text-slate-500">{label}</p></div>
 }
 
 function TacheList({ title, taches, aujourdHui }: { title: string; taches: TachePeriodiquePlanning[]; aujourdHui: string }) {
@@ -360,62 +321,12 @@ function Empty({ text }: { text: string }) {
   return <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">{text}</p>
 }
 
-function ClipboardIcon({ className }: { className?: string }) {
-  return <Sparkles className={className} />
-}
-
 function compterParEtat(mouvements: PlanningChambre[]) {
   return mouvements.reduce<Record<string, number>>((acc, mouvement) => {
     const etat = mouvement.etat?.nom || 'AFFECTE'
     acc[etat] = (acc[etat] || 0) + 1
     return acc
   }, {})
-}
-
-function construireActivites(mouvements: PlanningChambre[], interventions: InterventionMaintenance[], taches: TachePeriodiquePlanning[]) {
-  const activites: Activite[] = []
-
-  mouvements
-    .filter((mouvement) => mouvement.etat?.nom === 'TERMINE' && mouvement.updated_at)
-    .forEach((mouvement) => activites.push({
-      id: `mouvement-${mouvement.id}`,
-      date: mouvement.updated_at || `${mouvement.date}T00:00:00`,
-      action: 'Mouvement chambre termine',
-      detail: `${mouvement.type_mouvement?.nom || 'Mouvement'} - ${nomLieu(mouvement.lieu)}`,
-      statut: '✅',
-    }))
-
-  interventions
-    .filter((intervention) => intervention.date_fermeture)
-    .forEach((intervention) => activites.push({
-      id: `intervention-${intervention.id}`,
-      date: intervention.date_fermeture || intervention.updated_at,
-      action: 'Intervention fermee',
-      detail: `${intervention.titre} - ${nomLieu(intervention.lieu)}`,
-      statut: '🔧',
-    }))
-
-  taches
-    .filter((tache) => tache.date_realisation)
-    .forEach((tache) => activites.push({
-      id: `tache-${tache.id}`,
-      date: `${tache.date_realisation}T12:00:00`,
-      action: 'Tache periodique realisee',
-      detail: `${tache.tache?.nom || 'Tache'} - ${nomLieu(tache.lieu)}`,
-      statut: '♻️',
-    }))
-
-  interventions.forEach((intervention) => {
-    intervention.photos?.forEach((photo) => activites.push({
-      id: `photo-${photo.id}`,
-      date: photo.created_at,
-      action: 'Photo ajoutee',
-      detail: `${photo.type_photo} - ${intervention.titre}`,
-      statut: '📷',
-    }))
-  })
-
-  return activites.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12)
 }
 
 function estTacheEnRetard(tache: TachePeriodiquePlanning, aujourdHui: string) {
@@ -446,7 +357,7 @@ function pointsDuJour(charge: ChargeExecutant) {
 }
 
 function libelleEtat(etat?: string) {
-  return { AFFECTE: 'A faire', A_FAIRE: 'A faire', EN_COURS: 'En cours', BLOQUE: 'Bloque', TERMINE: 'Termine', ANNULEE: 'Annule' }[etat || 'AFFECTE'] || etat || 'A faire'
+  return { AFFECTE: 'A faire', A_FAIRE: 'A faire', EN_COURS: 'En cours', BLOQUE: 'Bloque', TERMINE: 'Termine', ANNULEE: 'Annule', NON_AFFECTE: 'Non affectes' }[etat || 'AFFECTE'] || etat || 'A faire'
 }
 
 function nomLieu(lieu: { nom: string; batiment?: { code: string } | null } | null | undefined) {
@@ -471,8 +382,9 @@ function formatDate(date: string) {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(`${date}T00:00:00`))
 }
 
-function formatDateHeure(date: string) {
-  return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(date))
+function uniquesParId<T extends { id: string }>(items: T[]) {
+  return Array.from(new Map(items.map((item) => [item.id, item])).values())
 }
 
 const secondaryButton = 'inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100'
+const linkButton = 'inline-flex h-10 items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100'
