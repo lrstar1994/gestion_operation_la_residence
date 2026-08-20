@@ -98,13 +98,13 @@ export type StatistiquesChauffeEau = {
   controlesManquants: number
 }
 
-const selectLieu = 'id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)'
+const selectLieu = 'id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)'
 const selectChauffeEau = 'id,code,nom,description,est_actif,created_at,updated_at'
 const selectChauffeEauLieu = `id,id_chauffe_eau,id_lieu,lieu:lieux(${selectLieu})`
 const selectReleve = 'id,id_chauffe_eau,date_releve,heure_demarrage,temperature_debut,heure_debranchement,temperature_fin,heure_controle_fin_matin,temperature_fin_matin,etat_constate,etat_attendu,conforme,id_utilisateur,commentaire,created_at,updated_at'
 const selectAnomalie = 'id,id_chauffe_eau,id_releve,date_anomalie,type_anomalie,statut,message,created_at,updated_at'
 const selectPlanning =
-  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
+  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
 
 export async function listerControleChauffeEau(date: string) {
   const [chauffeEaux, liaisons, releves, anomalies, planning] = await Promise.all([
@@ -354,3 +354,4 @@ function grouperPar<T>(items: T[], getKey: (item: T) => string) {
 function normaliserTexte(valeur: string) {
   return valeur.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
+

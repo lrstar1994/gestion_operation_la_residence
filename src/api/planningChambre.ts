@@ -80,11 +80,11 @@ export type ConflitPlanningChambre = {
 const selectTypeMouvement = 'id,nom,points,couleur'
 const selectEtatMouvement = 'id,nom'
 const selectPlanningChambre =
-  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
+  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
 const selectTemplate =
   'id,nom,description'
 const selectTemplateItem =
-  'id,id_template,id_lieu,jour_semaine,id_type_mouvement,id_executant,lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),type_mouvement(id,nom,points,couleur),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
+  'id,id_template,id_lieu,jour_semaine,id_type_mouvement,id_executant,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
 
 export async function listerTypesMouvement() {
   const { data, error } = await supabase
@@ -385,3 +385,4 @@ export function calculerCharges(
 export function cleMouvement(idLieu: string, date: string, idTypeMouvement: string) {
   return `${idLieu}-${date}-${idTypeMouvement}`
 }
+

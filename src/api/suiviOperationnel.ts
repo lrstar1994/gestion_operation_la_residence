@@ -16,8 +16,8 @@ export type HistoriqueEtatTacheChambre = {
 
 const selectSuiviTacheChambre =
   'id,id_planning_chambre,id_lieu,id_type_mouvement,date_mouvement,date_execution,date_limite,id_executant,id_etat,points,urgence,commentaire,motif_blocage,created_at,updated_at,' +
-  'planning_chambre:id_planning_chambre(id,id_lieu,date,id_type_mouvement,id_executant,id_etat,lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))),' +
-  'lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),' +
+  'planning_chambre:id_planning_chambre(id,id_lieu,date,id_type_mouvement,id_executant,id_etat,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))),' +
+  'lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),' +
   'type_mouvement(id,nom,points,couleur),' +
   'executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),' +
   'etat:etat_mouvement(id,nom)'
@@ -26,7 +26,7 @@ const selectHistoriqueTacheChambre =
   'id,id_tache_chambre,ancien_id_etat,nouveau_id_etat,motif,modifie_par,created_at,ancien_etat:etat_mouvement!historique_etat_tache_chambre_ancien_id_etat_fkey(id,nom),nouveau_etat:etat_mouvement!historique_etat_tache_chambre_nouveau_id_etat_fkey(id,nom)'
 
 const selectPlanningChambreSuivi =
-  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
+  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
 
 export async function listerTachesChambresSuivi(date: string) {
   await synchroniserTachesChambresDepuisPlanning(date)
@@ -71,7 +71,7 @@ export async function synchroniserTachesChambresDepuisPlanning(date: string) {
       date_mouvement: mouvement.date,
       date_execution: mouvement.date,
       date_limite: mouvement.date,
-      id_executant: mouvement.id_executant || mouvement.lieu?.batiment?.id_executant_defaut || null,
+      id_executant: mouvement.id_executant || mouvement.lieu?.id_executant_defaut || mouvement.lieu?.batiment?.id_executant_defaut || null,
       id_etat: mouvement.id_etat,
       points: mouvement.type_mouvement?.points || 0,
       urgence: urgenceDepuisDate(mouvement.date),
@@ -142,3 +142,4 @@ function formatDateInput(date: Date) {
   const jour = String(date.getDate()).padStart(2, '0')
   return `${annee}-${mois}-${jour}`
 }
+

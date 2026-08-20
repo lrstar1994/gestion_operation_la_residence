@@ -171,7 +171,7 @@ export function TravailChambres() {
 
     setDateLimite(mouvementSelectionne.date)
     const prochaineDateExecution = mouvementSelectionne.date < aujourdHui ? aujourdHui : mouvementSelectionne.date
-    const executantPropose = mouvementSelectionne.id_executant || mouvementSelectionne.lieu?.batiment?.id_executant_defaut || ''
+    const executantPropose = mouvementSelectionne.id_executant || executantDefautPourLieu(mouvementSelectionne.lieu) || ''
 
     setDateExecution(prochaineDateExecution)
     setIdExecutant(estExecutantEnTravail(executantPropose, prochaineDateExecution) ? executantPropose : '')
@@ -537,7 +537,7 @@ export function TravailChambres() {
 
   function remplirDepuisMouvement(mouvement: PlanningChambre) {
     const prochaineDateExecution = mouvement.date < aujourdHui ? aujourdHui : mouvement.date
-    const executantPropose = mouvement.id_executant || mouvement.lieu?.batiment?.id_executant_defaut || ''
+    const executantPropose = mouvement.id_executant || executantDefautPourLieu(mouvement.lieu) || ''
 
     setIdMouvement(mouvement.id)
     setDateLimite(mouvement.date)
@@ -1196,6 +1196,10 @@ function urgenceDepuisMouvement(dateMouvement: string, aujourdHui: string): Urge
 function estMouvementProgrammable(type?: string | null) {
   const nom = type?.toUpperCase() || ''
   return nom.includes('DEPART') || nom.includes('ARRIVEE')
+}
+
+function executantDefautPourLieu(lieu?: Lieu | null) {
+  return lieu?.id_executant_defaut || lieu?.batiment?.id_executant_defaut || null
 }
 
 function libelleTravailChambre(type?: string | null) {

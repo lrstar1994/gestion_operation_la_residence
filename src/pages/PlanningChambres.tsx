@@ -393,7 +393,7 @@ export function PlanningChambres() {
     setModal({ chambre, date, mouvements })
     setMouvementEdition(premier)
     setTypeModal(premier?.id_type_mouvement || typesMouvement[0]?.id || '')
-    setExecutantModal(premier?.id_executant || chambre.batiment?.id_executant_defaut || '')
+    setExecutantModal(premier?.id_executant || executantDefautPourLieu(chambre) || '')
   }
 
   async function enregistrerModal(event: React.FormEvent<HTMLFormElement>) {
@@ -464,7 +464,7 @@ export function PlanningChambres() {
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-700">Executant</span>
                 <select value={executantLot} onChange={(event) => setExecutantLot(event.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                  <option value="">Defaut du batiment si en travail</option>
+                  <option value="">Defaut chambre/batiment si en travail</option>
                   {executantsLotDisponibles.map((executant) => (
                     <option key={executant.id} value={executant.id}>{executant.nom}</option>
                   ))}
@@ -730,7 +730,7 @@ export function PlanningChambres() {
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-700">Executant</span>
                 <select value={executantLot} onChange={(event) => setExecutantLot(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                  <option value="">Defaut du batiment si en travail</option>
+                  <option value="">Defaut chambre/batiment si en travail</option>
                   {executantsLotDisponibles.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
                 </select>
                 {executantsLotDisponibles.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun executant en travail pour la date de reference.</p>}
@@ -1127,6 +1127,10 @@ function PaginationPlanning({
       </div>
     </div>
   )
+}
+
+function executantDefautPourLieu(lieu: Lieu) {
+  return lieu.id_executant_defaut || lieu.batiment?.id_executant_defaut || null
 }
 
 function formatDateInput(date: Date) {

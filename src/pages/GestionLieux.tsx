@@ -31,6 +31,7 @@ type FormLieu = {
   code: string
   id_batiment: string
   id_categorie: string
+  id_executant_defaut: string
   numero: string
   est_actif: boolean
 }
@@ -48,6 +49,7 @@ const formLieuInitial: FormLieu = {
   code: '',
   id_batiment: '',
   id_categorie: '',
+  id_executant_defaut: '',
   numero: '',
   est_actif: true,
 }
@@ -227,6 +229,7 @@ export function GestionLieux() {
       code: lieu.code || '',
       id_batiment: lieu.id_batiment || '',
       id_categorie: lieu.id_categorie,
+      id_executant_defaut: lieu.id_executant_defaut || '',
       numero: lieu.numero || '',
       est_actif: lieu.est_actif,
     })
@@ -267,6 +270,7 @@ export function GestionLieux() {
         code: formLieu.code.trim() || null,
         id_batiment: formLieu.id_batiment || null,
         id_categorie: formLieu.id_categorie,
+        id_executant_defaut: formLieu.id_executant_defaut || null,
         numero: formLieu.numero.trim() || null,
         est_actif: formLieu.est_actif,
       }
@@ -432,6 +436,7 @@ export function GestionLieux() {
                   form={formLieu}
                   batiments={batiments}
                   categories={categories}
+                  executants={executants}
                   soumission={soumission}
                   onSubmit={gererLieu}
                   onReset={reinitialiserFormulaires}
@@ -614,6 +619,7 @@ function FormLieu({
   form,
   batiments,
   categories,
+  executants,
   soumission,
   onSubmit,
   onReset,
@@ -622,11 +628,17 @@ function FormLieu({
   form: FormLieu
   batiments: Batiment[]
   categories: CategorieLieu[]
+  executants: Executant[]
   soumission: boolean
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void
   onReset: () => void
   setForm: React.Dispatch<React.SetStateAction<FormLieu>>
 }) {
+  const categorie = categories.find((item) => item.id === form.id_categorie)
+  const executantsDisponibles = categorie && estCategorieChambre(categorie)
+    ? executants.filter((executant) => estExecutantChambre(executant))
+    : executants
+
   return (
     <form onSubmit={onSubmit}>
       <FormHeader titre={form.id ? 'Modifier un lieu' : 'Ajouter un lieu'} onReset={form.id ? onReset : undefined} />
@@ -660,6 +672,22 @@ function FormLieu({
           {categories.map((categorie) => (
             <option key={categorie.id} value={categorie.id}>
               {categorie.nom}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="mb-4 block">
+        <span className="mb-1 block text-sm font-medium text-slate-700">Executant par defaut specifique</span>
+        <select
+          value={form.id_executant_defaut}
+          onChange={(event) => setForm((etat) => ({ ...etat, id_executant_defaut: event.target.value }))}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+        >
+          <option value="">Aucun - utiliser celui du batiment</option>
+          {executantsDisponibles.map((executant) => (
+            <option key={executant.id} value={executant.id}>
+              {executant.nom}
             </option>
           ))}
         </select>
@@ -917,6 +945,7 @@ function LieuCard({
             {lieu.numero && <Badge>{lieu.numero}</Badge>}
             {lieu.batiment && <Badge>{lieu.batiment.nom}</Badge>}
             {lieu.categorie && <Badge tone={lieu.categorie.code}>{lieu.categorie.nom}</Badge>}
+            {lieu.executant_defaut && <Badge tone="executant">Defaut : {lieu.executant_defaut.nom}</Badge>}
           </div>
         </div>
         {!lectureSeule && <Actions actionEnCours={actionEnCours} onEdit={onEdit} onDelete={onDelete} />}
@@ -946,12 +975,13 @@ function VueListe({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-[900px] w-full divide-y divide-slate-200 text-sm">
+      <table className="min-w-[1040px] w-full divide-y divide-slate-200 text-sm">
         <thead className="bg-slate-50">
           <tr>
             <th className="px-4 py-3 text-left font-semibold text-slate-500">Lieu</th>
             <th className="px-4 py-3 text-left font-semibold text-slate-500">Batiment</th>
             <th className="px-4 py-3 text-left font-semibold text-slate-500">Categorie</th>
+            <th className="px-4 py-3 text-left font-semibold text-slate-500">Defaut executant</th>
             <th className="px-4 py-3 text-left font-semibold text-slate-500">Code</th>
             <th className="px-4 py-3 text-left font-semibold text-slate-500">Statut</th>
             {!lectureSeule && <th className="px-4 py-3 text-right font-semibold text-slate-500">Actions</th>}
@@ -963,6 +993,7 @@ function VueListe({
               <td className="px-4 py-3 font-medium text-slate-900">{afficherLieu(lieu)}</td>
               <td className="px-4 py-3 text-slate-600">{lieu.batiment?.nom || '-'}</td>
               <td className="px-4 py-3 text-slate-600">{lieu.categorie?.nom}</td>
+              <td className="px-4 py-3 text-slate-600">{lieu.executant_defaut?.nom || 'Batiment'}</td>
               <td className="px-4 py-3 text-slate-500">{lieu.code || '-'}</td>
               <td className="px-4 py-3">
                 <span className={lieu.est_actif ? 'rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700' : 'rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-500'}>
@@ -978,7 +1009,7 @@ function VueListe({
           ))}
           {lieux.length === 0 && (
             <tr>
-              <td colSpan={lectureSeule ? 5 : 6} className="px-4 py-8 text-center text-slate-500">
+              <td colSpan={lectureSeule ? 6 : 7} className="px-4 py-8 text-center text-slate-500">
                 Aucun lieu.
               </td>
             </tr>
@@ -1154,6 +1185,17 @@ function Badge({ children, tone = 'default' }: { children: React.ReactNode; tone
 
 function afficherLieu(lieu: Lieu) {
   return lieu.batiment ? `${lieu.nom} (${lieu.batiment.nom})` : lieu.nom
+}
+
+function estCategorieChambre(categorie: CategorieLieu) {
+  const code = categorie.code.trim().toLowerCase()
+  const nom = categorie.nom.trim().toLowerCase()
+  return ['chambre', 'chambres'].includes(code) || nom.includes('chambre')
+}
+
+function estExecutantChambre(executant: Executant) {
+  const domaine = executant.domaine?.nom.trim().toLowerCase() || ''
+  return domaine.includes('chambre')
 }
 
 function upsertListe<T extends { id: string; nom: string }>(liste: T[], item: T) {

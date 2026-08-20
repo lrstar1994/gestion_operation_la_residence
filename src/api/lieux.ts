@@ -23,10 +23,15 @@ export type Lieu = {
   code: string | null
   id_batiment: string | null
   id_categorie: string
+  id_executant_defaut: string | null
   numero: string | null
   est_actif: boolean
   batiment?: Batiment | null
   categorie?: CategorieLieu | null
+  executant_defaut?: {
+    id: string
+    nom: string
+  } | null
 }
 
 export type BatimentPayload = {
@@ -45,13 +50,14 @@ export type LieuPayload = {
   code: string | null
   id_batiment: string | null
   id_categorie: string
+  id_executant_defaut: string | null
   numero: string | null
   est_actif: boolean
 }
 
 const selectBatiment = 'id,code,nom,id_executant_defaut,executant_defaut:executant(id,nom)'
 const selectCategorie = 'id,code,nom'
-const selectLieu = 'id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)'
+const selectLieu = 'id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)'
 
 export function estLieuChambre(lieu: Pick<Lieu, 'categorie'>) {
   const code = lieu.categorie?.code?.trim().toLowerCase() || ''

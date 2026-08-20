@@ -116,7 +116,7 @@ const selectHistoriqueOrdre =
   'id,id_intervention,id_type_intervention,ancienne_position,nouvelle_position,modifie_par,created_at,intervention:intervention_maintenance(id,titre),type_intervention:type_intervention_maintenance(id,nom,est_actif),utilisateur:utilisateurs(id,nom,email)'
 const selectIntervention =
   `id,titre,description,travail_a_faire,id_type_intervention,id_lieu,date_intervention,heure_debut,date_fin,heure_fin,priorite,id_executant,id_etat,commentaire_fermeture,date_fermeture,ordre_realisation,position_updated_at,position_updated_by,est_actif,created_at,updated_at,` +
-  `lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),` +
+  `lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),` +
   `executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),` +
   `type_intervention:type_intervention_maintenance(id,nom,est_actif),` +
   `etat:etat_mouvement(id,nom),photos:photo_intervention(${selectPhoto}),commentaires:commentaire_intervention(${selectCommentaire})`
@@ -392,3 +392,4 @@ function normaliserIntervention(intervention: InterventionMaintenance) {
     commentaires: [...(intervention.commentaires || [])].sort((a, b) => b.created_at.localeCompare(a.created_at)),
   }
 }
+

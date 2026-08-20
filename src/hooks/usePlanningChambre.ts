@@ -96,7 +96,7 @@ export function usePlanningChambre(dateDebut: string, dateFin?: string) {
   }, [charger])
 
   function executantDefautPourChambre(chambre: Lieu) {
-    return chambre.batiment?.id_executant_defaut || null
+    return chambre.id_executant_defaut || chambre.batiment?.id_executant_defaut || null
   }
 
   function estExecutantEnTravail(idExecutant: string | null | undefined, date: string) {

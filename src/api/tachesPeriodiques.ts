@@ -74,9 +74,9 @@ export type TachePeriodiqueHistorique = {
 const selectTache =
   'id,nom,code,description,id_categorie_lieu,frequence_jours,priorite,niveau_lourdeur,nature,points_estimes,est_reportable,delai_alerte_jours,est_actif,categorie_lieu:categories_lieu(id,code,nom)'
 const selectPlanning =
-  'id,id_tache,id_lieu,id_executant,date_realisation,date_echeance,date_echeance_originale,id_etat,est_reportee,motif_report,est_actif,tache:tache_periodique(id,nom,code,description,id_categorie_lieu,frequence_jours,priorite,niveau_lourdeur,nature,points_estimes,est_reportable,delai_alerte_jours,est_actif,categorie_lieu:categories_lieu(id,code,nom)),lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),etat:etat_mouvement(id,nom)'
+  'id,id_tache,id_lieu,id_executant,date_realisation,date_echeance,date_echeance_originale,id_etat,est_reportee,motif_report,est_actif,tache:tache_periodique(id,nom,code,description,id_categorie_lieu,frequence_jours,priorite,niveau_lourdeur,nature,points_estimes,est_reportable,delai_alerte_jours,est_actif,categorie_lieu:categories_lieu(id,code,nom)),lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),etat:etat_mouvement(id,nom)'
 const selectHistorique =
-  'id,id_tache,id_lieu,id_executant,date_realisation,duree_minutes,commentaire,created_at,tache:tache_periodique(id,nom,code,description,id_categorie_lieu,frequence_jours,priorite,niveau_lourdeur,nature,points_estimes,est_reportable,delai_alerte_jours,est_actif,categorie_lieu:categories_lieu(id,code,nom)),lieu:lieux(id,nom,code,id_batiment,id_categorie,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
+  'id,id_tache,id_lieu,id_executant,date_realisation,duree_minutes,commentaire,created_at,tache:tache_periodique(id,nom,code,description,id_categorie_lieu,frequence_jours,priorite,niveau_lourdeur,nature,points_estimes,est_reportable,delai_alerte_jours,est_actif,categorie_lieu:categories_lieu(id,code,nom)),lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
 
 export async function listerTachesPeriodiques() {
   const { data, error } = await supabase.from('tache_periodique').select(selectTache).order('nom').returns<TachePeriodique[]>()
@@ -208,3 +208,4 @@ function ajouterJours(date: string, jours: number) {
   const jour = String(resultat.getDate()).padStart(2, '0')
   return `${annee}-${mois}-${jour}`
 }
+
