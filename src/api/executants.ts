@@ -18,6 +18,10 @@ export type ExecutantPayload = {
   id_domaine: string
 }
 
+export type DomaineExecutantPayload = {
+  capacite_max: number | null
+}
+
 const selectDomaineExecutant = 'id,nom,capacite_max'
 const selectExecutant = 'id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)'
 
@@ -27,6 +31,21 @@ export async function listerDomainesExecutants() {
     .select(selectDomaineExecutant)
     .order('nom', { ascending: true })
     .returns<DomaineExecutant[]>()
+
+  if (error) {
+    throw error
+  }
+
+  return data
+}
+
+export async function modifierDomaineExecutant(id: string, payload: DomaineExecutantPayload) {
+  const { data, error } = await supabase
+    .from('domaine_executant')
+    .update(payload)
+    .eq('id', id)
+    .select(selectDomaineExecutant)
+    .single<DomaineExecutant>()
 
   if (error) {
     throw error

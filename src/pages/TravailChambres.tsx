@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { CalendarCheck, Loader2, Plus, RefreshCcw, Save, Search, Trash2, X } from 'lucide-react'
+import { CalendarCheck, FileDown, Loader2, Plus, RefreshCcw, Save, Search, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { listerExecutants, type Executant } from '../api/executants'
 import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
@@ -583,6 +583,150 @@ export function TravailChambres() {
     setModalItem(null)
   }
 
+  function exporterProgrammeFemmesPdf() {
+    const datesExport = Array.from({ length: 7 }, (_, index) => ajouterJours(dateDebut, index))
+    const datesExportSet = new Set(datesExport)
+    const itemsExport = itemsPlanning
+      .filter((item) => datesExportSet.has(item.date))
+      .filter((item) => !item.executant || estFemmeDeChambre(item.executant))
+
+    if (itemsExport.length === 0) {
+      toast.error('Aucun travail chambre a exporter sur cette semaine.')
+      return
+    }
+
+    const groupes = new Map<string, { nom: string; items: ItemPlanningTravail[] }>()
+
+    itemsExport.forEach((item) => {
+      const id = item.id_executant || 'non-affecte'
+      const groupe = groupes.get(id) || {
+        nom: item.executant?.nom || 'Non affecte',
+        items: [],
+      }
+      groupe.items.push(item)
+      groupes.set(id, groupe)
+    })
+
+    const lignes = Array.from(groupes.entries())
+      .map(([id, groupe]) => ({ id, ...groupe }))
+      .sort((a, b) => {
+        if (a.id === 'non-affecte') return 1
+        if (b.id === 'non-affecte') return -1
+        return a.nom.localeCompare(b.nom)
+      })
+
+    const totalChambres = itemsExport.length
+    const nonAffectes = itemsExport.filter((item) => !item.id_executant).length
+    const titrePeriode = `${formatDate(datesExport[0])} au ${formatDate(datesExport[6])}`
+    const fenetre = window.open('', '_blank', 'width=1200,height=800')
+
+    if (!fenetre) {
+      toast.error("Impossible d'ouvrir la fenetre d'export. Verifie le blocage des pop-ups.")
+      return
+    }
+
+    const lignesHtml = lignes.map((ligne) => {
+      const cellules = datesExport.map((date) => {
+        const itemsJour = ligne.items
+          .filter((item) => item.date === date)
+          .sort((a, b) => (a.lieu?.numero || a.lieu?.nom || '').localeCompare(b.lieu?.numero || b.lieu?.nom || ''))
+        const visibles = itemsJour.slice(0, 5)
+        const supplement = itemsJour.length - visibles.length
+
+        return `
+          <td>
+            ${visibles.map((item) => `
+              <div class="task">
+                <strong>${escapeHtml(item.lieu?.numero || item.lieu?.nom || 'Chambre')}</strong>
+                <span>${escapeHtml(libelleTravailCourt(item.type?.nom))}</span>
+              </div>
+            `).join('')}
+            ${supplement > 0 ? `<div class="more">+${supplement} autres</div>` : ''}
+          </td>
+        `
+      }).join('')
+
+      return `
+        <tr>
+          <th>
+            <div class="name">${escapeHtml(ligne.nom)}</div>
+            <div class="count">${ligne.items.length} travail(aux)</div>
+          </th>
+          ${cellules}
+        </tr>
+      `
+    }).join('')
+
+    fenetre.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Programme femmes de chambre - ${escapeHtml(titrePeriode)}</title>
+          <style>
+            @page { size: A4 landscape; margin: 8mm; }
+            * { box-sizing: border-box; }
+            body { margin: 0; color: #0f172a; font-family: Arial, sans-serif; font-size: 8px; }
+            header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+            h1 { margin: 0; font-size: 15px; letter-spacing: .02em; text-transform: uppercase; }
+            .subtitle { margin-top: 2px; color: #475569; font-size: 9px; }
+            .summary { display: flex; gap: 6px; color: #334155; font-size: 8px; white-space: nowrap; }
+            .summary span { border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 5px; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+            th, td { border: 1px solid #cbd5e1; vertical-align: top; }
+            thead th { background: #0f766e; color: white; padding: 5px 4px; text-align: left; font-size: 8px; }
+            thead th:first-child { width: 22mm; }
+            tbody th { background: #f8fafc; padding: 4px; text-align: left; width: 22mm; }
+            td { height: 22mm; padding: 3px; }
+            .name { font-size: 8px; font-weight: 700; line-height: 1.2; }
+            .count { margin-top: 2px; color: #64748b; font-size: 7px; font-weight: 400; }
+            .task { display: flex; align-items: baseline; justify-content: space-between; gap: 3px; border-bottom: 1px dotted #cbd5e1; padding: 1px 0; line-height: 1.15; }
+            .task strong { font-size: 7.5px; }
+            .task span { color: #475569; font-size: 7px; white-space: nowrap; }
+            .more { margin-top: 2px; border-radius: 3px; background: #f1f5f9; padding: 2px; color: #475569; font-size: 7px; font-weight: 700; text-align: center; }
+            footer { margin-top: 6px; display: flex; justify-content: space-between; color: #64748b; font-size: 7px; }
+            @media print {
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          <header>
+            <div>
+              <h1>Programme hebdomadaire femmes de chambre</h1>
+              <div class="subtitle">Semaine du ${escapeHtml(titrePeriode)}</div>
+            </div>
+            <div class="summary">
+              <span>Femmes : ${lignes.filter((ligne) => ligne.id !== 'non-affecte').length}</span>
+              <span>Travaux : ${totalChambres}</span>
+              <span>Non affectes : ${nonAffectes}</span>
+            </div>
+          </header>
+          <table>
+            <thead>
+              <tr>
+                <th>Femme</th>
+                ${datesExport.map((date) => `<th>${joursLabels[new Date(`${date}T00:00:00`).getDay()]}<br>${formatDateCourte(date)}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>${lignesHtml}</tbody>
+          </table>
+          <footer>
+            <span>Arr. = preparation arrivee | Dep. = nettoyage depart | Rec. = recouche</span>
+            <span>Genere le ${formatDateInput(new Date()).split('-').reverse().join('/')}</span>
+          </footer>
+          <script>
+            window.addEventListener('load', () => {
+              window.focus();
+              setTimeout(() => window.print(), 250);
+            });
+          </script>
+        </body>
+      </html>
+    `)
+    fenetre.document.close()
+  }
+
   return (
     <section className="space-y-5">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -595,6 +739,10 @@ export function TravailChambres() {
           <p className="mt-1 text-sm text-slate-500">Planifie le travail reel avec une date execution separee du mouvement hotelier.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <button type="button" onClick={exporterProgrammeFemmesPdf} className={secondaryButton}>
+            <FileDown className="h-4 w-4" />
+            Exporter PDF
+          </button>
           <button type="button" onClick={() => setFormulaireOuvert(true)} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800">
             <Plus className="h-4 w-4" />
             Programmer
@@ -1058,6 +1206,14 @@ function libelleTravailChambre(type?: string | null) {
   return type || 'Travail chambre'
 }
 
+function libelleTravailCourt(type?: string | null) {
+  const nom = type?.toUpperCase() || ''
+  if (nom.includes('ARRIVEE')) return 'Arr.'
+  if (nom.includes('DEPART')) return 'Dep.'
+  if (nom.includes('RECOUCHE')) return 'Rec.'
+  return type || 'Trav.'
+}
+
 function estFemmeDeChambre(executant: Executant) {
   const domaine = normaliserTexte(executant.domaine?.nom || '')
   return domaine.includes('femme de chambre') || domaine.includes('chambre')
@@ -1085,6 +1241,15 @@ function differenceJours(debut: string, fin: string) {
 
 function normaliserTexte(valeur: string) {
   return valeur.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
+function escapeHtml(valeur: string) {
+  return valeur
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }
 
 function couleurBarreCharge(taux: number, surcharge: boolean) {

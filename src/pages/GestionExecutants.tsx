@@ -5,6 +5,7 @@ import {
   creerExecutant,
   listerDomainesExecutants,
   listerExecutants,
+  modifierDomaineExecutant,
   modifierExecutant,
   supprimerExecutant,
   type DomaineExecutant,
@@ -31,6 +32,8 @@ export function GestionExecutants() {
   const [chargement, setChargement] = useState(true)
   const [soumission, setSoumission] = useState(false)
   const [actionEnCours, setActionEnCours] = useState<string | null>(null)
+  const [capacitesDomaines, setCapacitesDomaines] = useState<Record<string, string>>({})
+  const [domaineEnCours, setDomaineEnCours] = useState<string | null>(null)
   const { estAdmin, peutAccederAuDomaine } = useAuth()
 
   const peutModifier = estAdmin() || peutAccederAuDomaine('chambres') || peutAccederAuDomaine('salles')
@@ -55,6 +58,7 @@ export function GestionExecutants() {
 
       setDomaines(domainesResultat)
       setExecutants(executantsResultat)
+      setCapacitesDomaines(Object.fromEntries(domainesResultat.map((domaine) => [domaine.id, domaine.capacite_max?.toString() || ''])))
       setFormulaire((etat) => ({
         ...etat,
         id_domaine: etat.id_domaine || domainesResultat[0]?.id || '',
@@ -155,6 +159,39 @@ export function GestionExecutants() {
     }
   }
 
+  async function enregistrerCapaciteDomaine(domaine: DomaineExecutant) {
+    if (!estAdmin()) {
+      toast.error("Seul l'admin peut modifier la capacite des domaines.")
+      return
+    }
+
+    const valeur = capacitesDomaines[domaine.id]?.trim() || ''
+    const capacite = valeur === '' ? null : Number(valeur)
+
+    if (valeur !== '' && (!Number.isInteger(capacite) || capacite < 0)) {
+      toast.error('La capacite doit etre un nombre entier positif, ou vide pour illimite.')
+      return
+    }
+
+    setDomaineEnCours(domaine.id)
+
+    try {
+      const domaineModifie = await modifierDomaineExecutant(domaine.id, { capacite_max: capacite })
+      setDomaines((liste) => liste.map((item) => (item.id === domaineModifie.id ? domaineModifie : item)))
+      setExecutants((liste) => liste.map((executant) => (
+        executant.id_domaine === domaineModifie.id
+          ? { ...executant, domaine: domaineModifie }
+          : executant
+      )))
+      setCapacitesDomaines((etat) => ({ ...etat, [domaineModifie.id]: domaineModifie.capacite_max?.toString() || '' }))
+      toast.success('Capacite mise a jour.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Modification impossible.')
+    } finally {
+      setDomaineEnCours(null)
+    }
+  }
+
   return (
     <section>
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -166,6 +203,47 @@ export function GestionExecutants() {
           <UserRoundCog className="h-5 w-5" />
         </div>
       </div>
+
+      {estAdmin() && (
+        <div className="mb-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-slate-950">Capacite des domaines executants</h2>
+            <p className="mt-1 text-sm text-slate-500">Les noms restent verrouilles car ils sont utilises par les regles metier. Vide = capacite illimitee.</p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {domaines.map((domaine) => (
+              <div key={domaine.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="font-semibold text-slate-900">{domaine.nom}</p>
+                  <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                    {domaine.capacite_max ?? 'Illimite'}
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    value={capacitesDomaines[domaine.id] ?? ''}
+                    onChange={(event) => setCapacitesDomaines((etat) => ({ ...etat, [domaine.id]: event.target.value }))}
+                    placeholder="Illimite"
+                    className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                  />
+                  <button
+                    type="button"
+                    disabled={domaineEnCours === domaine.id}
+                    onClick={() => void enregistrerCapaciteDomaine(domaine)}
+                    className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
         <form onSubmit={gererSoumission} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">

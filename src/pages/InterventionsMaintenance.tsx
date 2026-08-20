@@ -8,6 +8,7 @@ import {
   Clock,
   Download,
   Eye,
+  FileDown,
   GripVertical,
   ImagePlus,
   Loader2,
@@ -431,6 +432,132 @@ export function InterventionsMaintenance() {
     }
   }
 
+  function exporterProgrammeMaintenancePdf() {
+    const interventionsExport = interventionsFiltrees
+      .filter((intervention) => ['AFFECTE', 'EN_COURS', 'BLOQUE'].includes(intervention.etat?.nom || ''))
+      .sort(comparerInterventionsPourExportMaintenance)
+
+    if (interventionsExport.length === 0) {
+      toast.error('Aucune intervention maintenance a exporter.')
+      return
+    }
+
+    const groupes = new Map<string, { nom: string; interventions: InterventionMaintenance[] }>()
+
+    interventionsExport.forEach((intervention) => {
+      const id = intervention.id_executant || 'non-affecte'
+      const groupe = groupes.get(id) || {
+        nom: intervention.executant?.nom || 'Non affecte',
+        interventions: [],
+      }
+      groupe.interventions.push(intervention)
+      groupes.set(id, groupe)
+    })
+
+    const colonnes = Array.from(groupes.entries())
+      .map(([id, groupe]) => ({ id, ...groupe }))
+      .sort((a, b) => {
+        if (a.id === 'non-affecte') return 1
+        if (b.id === 'non-affecte') return -1
+        return a.nom.localeCompare(b.nom)
+      })
+
+    const aujourdHui = formatDateInput(new Date())
+    const titrePeriode = `${formatDate(aujourdHui)} au ${formatDate(ajouterJours(aujourdHui, 6))}`
+    const urgentes = interventionsExport.filter((intervention) => intervention.priorite === 'urgente').length
+    const bloquees = interventionsExport.filter((intervention) => intervention.etat?.nom === 'BLOQUE').length
+    const nonAffectees = interventionsExport.filter((intervention) => !intervention.id_executant).length
+    const fenetre = window.open('', '_blank', 'width=1200,height=800')
+
+    if (!fenetre) {
+      toast.error("Impossible d'ouvrir la fenetre d'export. Verifie le blocage des pop-ups.")
+      return
+    }
+
+    const colonnesHtml = colonnes.map((colonne) => {
+      const interventionsParType = grouperInterventionsParType(colonne.interventions)
+      return `
+        <section class="col">
+          <h2>${escapeHtml(colonne.nom)}</h2>
+          <div class="count">${colonne.interventions.length} intervention(s)</div>
+          ${interventionsParType.map((groupe) => `
+            <div class="type">${escapeHtml(groupe.type)}</div>
+            ${groupe.interventions.slice(0, 10).map((intervention) => `
+              <div class="item">
+                <div class="rank">${intervention.ordre_realisation ?? '-'}</div>
+                <div class="content">
+                  <strong>${escapeHtml(nomLieu(intervention.lieu))}</strong>
+                  <span>${escapeHtml(intervention.titre)}</span>
+                  ${intervention.travail_a_faire ? `<em>${escapeHtml(intervention.travail_a_faire)}</em>` : ''}
+                </div>
+              </div>
+            `).join('')}
+            ${groupe.interventions.length > 10 ? `<div class="more">+${groupe.interventions.length - 10} autres</div>` : ''}
+          `).join('')}
+        </section>
+      `
+    }).join('')
+
+    fenetre.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Programme maintenance - ${escapeHtml(titrePeriode)}</title>
+          <style>
+            @page { size: A4 landscape; margin: 8mm; }
+            * { box-sizing: border-box; }
+            body { margin: 0; color: #0f172a; font-family: Arial, sans-serif; font-size: 8px; }
+            header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+            h1 { margin: 0; font-size: 15px; letter-spacing: .02em; text-transform: uppercase; }
+            .subtitle { margin-top: 2px; color: #475569; font-size: 9px; }
+            .summary { display: flex; gap: 6px; color: #334155; font-size: 8px; white-space: nowrap; }
+            .summary span { border: 1px solid #cbd5e1; border-radius: 4px; padding: 3px 5px; }
+            .grid { display: grid; grid-template-columns: repeat(${Math.min(Math.max(colonnes.length, 1), 5)}, minmax(0, 1fr)); gap: 5px; }
+            .col { min-height: 168mm; border: 1px solid #cbd5e1; border-radius: 4px; overflow: hidden; }
+            h2 { margin: 0; background: #0f766e; color: white; padding: 5px; font-size: 9px; line-height: 1.2; }
+            .count { border-bottom: 1px solid #cbd5e1; background: #f8fafc; padding: 3px 5px; color: #64748b; font-size: 7px; }
+            .type { margin-top: 3px; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background: #f1f5f9; padding: 3px 5px; color: #334155; font-size: 7px; font-weight: 700; text-transform: uppercase; }
+            .item { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 4px; border-bottom: 1px dotted #cbd5e1; padding: 3px 4px; }
+            .rank { color: #0f766e; font-size: 9px; font-weight: 700; text-align: center; }
+            .content strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 7.5px; }
+            .content span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #334155; font-size: 7px; }
+            .content em { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #64748b; font-size: 6.5px; font-style: normal; }
+            .more { margin: 3px; border-radius: 3px; background: #f8fafc; padding: 2px; color: #475569; font-size: 7px; font-weight: 700; text-align: center; }
+            footer { margin-top: 6px; display: flex; justify-content: space-between; color: #64748b; font-size: 7px; }
+            @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+          </style>
+        </head>
+        <body>
+          <header>
+            <div>
+              <h1>Programme hebdomadaire maintenance</h1>
+              <div class="subtitle">Semaine du ${escapeHtml(titrePeriode)} - file active visible</div>
+            </div>
+            <div class="summary">
+              <span>Ouvertes : ${interventionsExport.length}</span>
+              <span>Urgentes : ${urgentes}</span>
+              <span>Bloquees : ${bloquees}</span>
+              <span>Non affectees : ${nonAffectees}</span>
+            </div>
+          </header>
+          <main class="grid">${colonnesHtml}</main>
+          <footer>
+            <span>Colonnes par executant, groupes par type, ordre manuel conserve.</span>
+            <span>Genere le ${formatDateInput(new Date()).split('-').reverse().join('/')}</span>
+          </footer>
+          <script>
+            window.addEventListener('load', () => {
+              window.focus();
+              setTimeout(() => window.print(), 250);
+            });
+          </script>
+        </body>
+      </html>
+    `)
+    fenetre.document.close()
+  }
+
   return (
     <section className="space-y-5">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -442,6 +569,10 @@ export function InterventionsMaintenance() {
           <p className="mt-1 text-sm text-slate-500">Suivi, photos avant/travaux fini, commentaires et fermeture controlee.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={exporterProgrammeMaintenancePdf} className={secondaryButton}>
+            <FileDown className="h-4 w-4" />
+            Exporter PDF
+          </button>
           <button type="button" onClick={() => setModalIntervention({ mode: 'creation' })} className={primaryButton}>
             <Plus className="h-4 w-4" />
             Nouvelle intervention
@@ -1293,6 +1424,27 @@ function comparerInterventionsParOrdre(a: InterventionMaintenance, b: Interventi
   return comparerInterventionsParDebut(a, b)
 }
 
+function comparerInterventionsPourExportMaintenance(a: InterventionMaintenance, b: InterventionMaintenance) {
+  const typeA = a.type_intervention?.nom || 'Autre'
+  const typeB = b.type_intervention?.nom || 'Autre'
+  const comparaisonType = typeA.localeCompare(typeB)
+  if (comparaisonType !== 0) return comparaisonType
+  return comparerInterventionsParOrdre(a, b)
+}
+
+function grouperInterventionsParType(interventions: InterventionMaintenance[]) {
+  const map = new Map<string, InterventionMaintenance[]>()
+
+  interventions.forEach((intervention) => {
+    const type = intervention.type_intervention?.nom || 'Autre'
+    map.set(type, [...(map.get(type) || []), intervention])
+  })
+
+  return Array.from(map.entries())
+    .map(([type, items]) => ({ type, interventions: items.sort(comparerInterventionsParOrdre) }))
+    .sort((a, b) => a.type.localeCompare(b.type))
+}
+
 function correspondRechercheIntervention(intervention: InterventionMaintenance, terme: string) {
   if (!terme) return true
 
@@ -1340,6 +1492,21 @@ function formatDateInput(date: Date) {
   const mois = String(date.getMonth() + 1).padStart(2, '0')
   const jour = String(date.getDate()).padStart(2, '0')
   return `${annee}-${mois}-${jour}`
+}
+
+function ajouterJours(date: string, jours: number) {
+  const valeur = new Date(`${date}T00:00:00`)
+  valeur.setDate(valeur.getDate() + jours)
+  return formatDateInput(valeur)
+}
+
+function escapeHtml(valeur: string) {
+  return valeur
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
 }
 
 const inputClass = 'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100'

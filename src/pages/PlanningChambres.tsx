@@ -17,6 +17,8 @@ type ReaffectationEnAttente = {
   payload: PlanningChambrePayload
 }
 
+type ModeSaisie = 'mouvement' | 'sejour'
+
 const joursLabels = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
 
 export function PlanningChambres() {
@@ -24,9 +26,12 @@ export function PlanningChambres() {
   const [batimentFiltre, setBatimentFiltre] = useState('tous')
   const [chambresSelectionnees, setChambresSelectionnees] = useState<string[]>([])
   const [dateLot, setDateLot] = useState(formatDateInput(new Date()))
+  const [dateDebutSejour, setDateDebutSejour] = useState(formatDateInput(new Date()))
+  const [dateFinSejour, setDateFinSejour] = useState(formatDateInput(new Date()))
   const [typeLot, setTypeLot] = useState('')
   const [executantLot, setExecutantLot] = useState('')
   const [remplacer, setRemplacer] = useState(false)
+  const [modeSaisie, setModeSaisie] = useState<ModeSaisie>('mouvement')
   const [suggestions, setSuggestions] = useState<SuggestionAffectation[]>([])
   const [payloadsEnAttente, setPayloadsEnAttente] = useState<PlanningChambrePayload[]>([])
   const [reaffectationsEnAttente, setReaffectationsEnAttente] = useState<ReaffectationEnAttente[]>([])
@@ -91,7 +96,8 @@ export function PlanningChambres() {
   const mouvementsParJour = datesVisibles.map((date) => {
     return planning.filter((mouvement) => mouvement.date === date)
   })
-  const executantsLotDisponibles = executantsEnTravail(dateLot)
+  const dateReferenceExecutant = modeSaisie === 'sejour' ? dateDebutSejour : dateLot
+  const executantsLotDisponibles = executantsEnTravail(dateReferenceExecutant)
   const chargesBatiments = useMemo(() => {
     const map = new Map<string, { id: string; nom: string; pointsParDate: Map<string, number>; total: number }>()
 
@@ -160,6 +166,46 @@ export function PlanningChambres() {
       .map((chambre) => mouvementPayload(chambre!, dateLot, typeLot, executantLot || undefined))
   }
 
+  function construirePayloadsSejour() {
+    if (!dateDebutSejour || !dateFinSejour) return []
+    if (dateFinSejour < dateDebutSejour) return []
+
+    const typeArrivee = trouverTypeMouvement('ARRIVEE')
+    const typeDepart = trouverTypeMouvement('DEPART')
+    const typeRecouche = trouverTypeMouvement('RECOUCHE')
+
+    if (!typeArrivee || !typeDepart || !typeRecouche) return []
+
+    return chambresSelectionnees
+      .map((idChambre) => chambres.find((chambre) => chambre.id === idChambre))
+      .filter(Boolean)
+      .flatMap((chambre) => {
+        const dates = datesEntre(dateDebutSejour, dateFinSejour)
+
+        return dates.flatMap((date) => {
+          const payloads: PlanningChambrePayload[] = []
+
+          if (date === dateDebutSejour) {
+            payloads.push(mouvementPayload(chambre!, date, typeArrivee.id, executantLot || undefined))
+          }
+
+          if (date > dateDebutSejour && date < dateFinSejour) {
+            payloads.push(mouvementPayload(chambre!, date, typeRecouche.id, executantLot || undefined))
+          }
+
+          if (date === dateFinSejour) {
+            payloads.push(mouvementPayload(chambre!, date, typeDepart.id, executantLot || undefined))
+          }
+
+          return payloads
+        })
+      })
+  }
+
+  function trouverTypeMouvement(nom: string) {
+    return typesMouvement.find((type) => type.nom.trim().toUpperCase() === nom)
+  }
+
   async function appliquerPayloads(payloads: PlanningChambrePayload[]) {
     setSoumission(true)
 
@@ -189,10 +235,20 @@ export function PlanningChambres() {
       return
     }
 
-    const payloads = construirePayloadsLot()
+    const payloads = modeSaisie === 'sejour' ? construirePayloadsSejour() : construirePayloadsLot()
 
     if (payloads.length === 0) {
-      toast.error('Selectionnez au moins une chambre, une date et un mouvement.')
+      toast.error(modeSaisie === 'sejour' ? 'Selectionnez au moins une chambre et une periode valide.' : 'Selectionnez au moins une chambre, une date et un mouvement.')
+      return
+    }
+
+    if (modeSaisie === 'sejour' && dateFinSejour < dateDebutSejour) {
+      toast.error('La date fin doit etre apres ou egale a la date debut.')
+      return
+    }
+
+    if (modeSaisie === 'sejour' && (!trouverTypeMouvement('ARRIVEE') || !trouverTypeMouvement('DEPART') || !trouverTypeMouvement('RECOUCHE'))) {
+      toast.error('Les types ARRIVEE, DEPART et RECOUCHE doivent exister.')
       return
     }
 
@@ -620,24 +676,64 @@ export function PlanningChambres() {
             </div>
 
             <form onSubmit={gererLot} className="space-y-4">
-              <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700">Date</span>
-                <input type="date" value={dateLot} onChange={(event) => setDateLot(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-sm font-medium text-slate-700">Mouvement</span>
-                <select value={typeLot} onChange={(event) => setTypeLot(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                  <option value="">Choisir</option>
-                  {typesMouvement.map((type) => <option key={type.id} value={type.id}>{type.nom} ({type.points} pts)</option>)}
-                </select>
-              </label>
+              <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+                <button type="button" onClick={() => setModeSaisie('mouvement')} className={modeSaisie === 'mouvement' ? 'rounded-md bg-white px-3 py-2 text-sm font-semibold text-teal-800 shadow-sm' : 'rounded-md px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-white/70'}>
+                  Mouvement
+                </button>
+                <button type="button" onClick={() => setModeSaisie('sejour')} className={modeSaisie === 'sejour' ? 'rounded-md bg-white px-3 py-2 text-sm font-semibold text-teal-800 shadow-sm' : 'rounded-md px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-white/70'}>
+                  Sejour
+                </button>
+              </div>
+
+              {modeSaisie === 'mouvement' && (
+                <>
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-slate-700">Date</span>
+                    <input type="date" value={dateLot} onChange={(event) => setDateLot(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-sm font-medium text-slate-700">Mouvement</span>
+                    <select value={typeLot} onChange={(event) => setTypeLot(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
+                      <option value="">Choisir</option>
+                      {typesMouvement.map((type) => <option key={type.id} value={type.id}>{type.nom} ({type.points} pts)</option>)}
+                    </select>
+                  </label>
+                </>
+              )}
+
+              {modeSaisie === 'sejour' && (
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 text-sm text-teal-900">
+                    Arrivee a la date debut, depart a la date fin, recouches entre les deux dates.
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-sm font-medium text-slate-700">Date debut</span>
+                      <input type="date" value={dateDebutSejour} onChange={(event) => setDateDebutSejour(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-sm font-medium text-slate-700">Date fin</span>
+                      <input type="date" value={dateFinSejour} onChange={(event) => setDateFinSejour(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />
+                    </label>
+                  </div>
+                  <ApercuSejour
+                    dateDebut={dateDebutSejour}
+                    dateFin={dateFinSejour}
+                    chambres={chambresSelectionnees.length}
+                    typeArrivee={trouverTypeMouvement('ARRIVEE')?.points ?? null}
+                    typeRecouche={trouverTypeMouvement('RECOUCHE')?.points ?? null}
+                    typeDepart={trouverTypeMouvement('DEPART')?.points ?? null}
+                  />
+                </div>
+              )}
+
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-700">Executant</span>
                 <select value={executantLot} onChange={(event) => setExecutantLot(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
                   <option value="">Defaut du batiment si en travail</option>
                   {executantsLotDisponibles.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
                 </select>
-                {executantsLotDisponibles.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun executant en travail pour cette date.</p>}
+                {executantsLotDisponibles.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun executant en travail pour la date de reference.</p>}
               </label>
               <label className="flex items-center gap-2 text-sm text-slate-700">
                 <input type="checkbox" checked={remplacer} onChange={(event) => setRemplacer(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600" />
@@ -664,7 +760,7 @@ export function PlanningChambres() {
 
               <button type="submit" disabled={!peutModifier || soumission} className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60">
                 <Save className="h-4 w-4" />
-                Appliquer
+                {modeSaisie === 'sejour' ? 'Creer le sejour' : 'Appliquer'}
               </button>
             </form>
           </aside>
@@ -786,6 +882,53 @@ function CellMouvements({ mouvements }: { mouvements: PlanningChambre[] }) {
           <p className="truncate text-xs opacity-80">{mouvement.executant?.nom || 'Non affecte'}</p>
         </div>
       ))}
+    </div>
+  )
+}
+
+function ApercuSejour({
+  dateDebut,
+  dateFin,
+  chambres,
+  typeArrivee,
+  typeRecouche,
+  typeDepart,
+}: {
+  dateDebut: string
+  dateFin: string
+  chambres: number
+  typeArrivee: number | null
+  typeRecouche: number | null
+  typeDepart: number | null
+}) {
+  if (!dateDebut || !dateFin) return null
+
+  if (dateFin < dateDebut) {
+    return <p className="rounded-md bg-rose-50 p-3 text-sm text-rose-700">La date fin doit etre apres ou egale a la date debut.</p>
+  }
+
+  const dates = datesEntre(dateDebut, dateFin)
+  const nbArrivees = 1
+  const nbDeparts = 1
+  const nbRecouches = Math.max(0, dates.length - 2)
+  const nbMouvementsParChambre = nbArrivees + nbDeparts + nbRecouches
+  const pointsParChambre = (typeArrivee ?? 0) + (typeDepart ?? 0) + nbRecouches * (typeRecouche ?? 0)
+  const typesComplets = typeArrivee !== null && typeRecouche !== null && typeDepart !== null
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
+      <p className="font-semibold text-slate-900">Apercu</p>
+      <div className="mt-2 grid gap-2 text-slate-600">
+        <span>{nbArrivees} arrivee - {formatDateCourte(dateDebut)}</span>
+        <span>{nbRecouches} recouche(s)</span>
+        <span>{nbDeparts} depart - {formatDateCourte(dateFin)}</span>
+        <span className="font-semibold text-slate-800">{nbMouvementsParChambre * chambres} mouvement(s) maximum pour {chambres} chambre(s)</span>
+        {typesComplets ? (
+          <span className="text-teal-700">{pointsParChambre * chambres} pts estimes au total</span>
+        ) : (
+          <span className="text-rose-700">Types ARRIVEE, RECOUCHE ou DEPART manquants.</span>
+        )}
+      </div>
     </div>
   )
 }
@@ -991,6 +1134,19 @@ function formatDateInput(date: Date) {
   const mois = String(date.getMonth() + 1).padStart(2, '0')
   const jour = String(date.getDate()).padStart(2, '0')
   return `${annee}-${mois}-${jour}`
+}
+
+function datesEntre(dateDebut: string, dateFin: string) {
+  const dates: string[] = []
+  const courant = new Date(`${dateDebut}T00:00:00`)
+  const fin = new Date(`${dateFin}T00:00:00`)
+
+  while (courant <= fin) {
+    dates.push(formatDateInput(courant))
+    courant.setDate(courant.getDate() + 1)
+  }
+
+  return dates
 }
 
 function formatDateCourte(date: string) {

@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Pencil, Plus, RefreshCcw, Save, Search, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   creerPlanningsTachesPeriodiques,
   creerTachePeriodique,
+  creerTachesPeriodiques,
   modifierPlanningTachePeriodique,
   modifierTachePeriodique,
   realiserTachePeriodique,
@@ -33,12 +34,15 @@ export function TachesPeriodiques() {
   const [statutFiltre, setStatutFiltre] = useState('tous')
   const [edition, setEdition] = useState<TachePeriodique | null>(null)
   const [form, setForm] = useState<TachePeriodiquePayload>(payloadVide())
+  const [idsCategoriesCreation, setIdsCategoriesCreation] = useState<string[]>([])
   const [soumission, setSoumission] = useState(false)
   const [realisation, setRealisation] = useState<TachePeriodiquePlanning | null>(null)
   const [report, setReport] = useState<TachePeriodiquePlanning | null>(null)
   const [occurrence, setOccurrence] = useState<TachePeriodique | null>(null)
   const [executantsProposition, setExecutantsProposition] = useState<Record<string, string>>({})
   const [idPlanningAAttribuer, setIdPlanningAAttribuer] = useState<string | null>(null)
+  const [idsTachesSelectionnees, setIdsTachesSelectionnees] = useState<string[]>([])
+  const [idExecutantAttributionLot, setIdExecutantAttributionLot] = useState('')
   const { estAdmin } = useAuth()
   const {
     taches,
@@ -74,6 +78,7 @@ export function TachesPeriodiques() {
     () => planningTrie.filter((item) => item.est_actif && !item.date_realisation && item.date_echeance <= aujourdHui),
     [aujourdHui, planningTrie],
   )
+  const toutesTachesSuiviSelectionnees = planningSuivi.length > 0 && planningSuivi.every((item) => idsTachesSelectionnees.includes(item.id))
   const planningAvenir = useMemo(
     () => planningTrie.filter((item) => item.est_actif && !item.date_realisation && item.date_echeance > aujourdHui),
     [aujourdHui, planningTrie],
@@ -83,8 +88,14 @@ export function TachesPeriodiques() {
     [idPlanningAAttribuer, propositions],
   )
 
+  useEffect(() => {
+    const idsVisibles = new Set(planningSuivi.map((item) => item.id))
+    setIdsTachesSelectionnees((selection) => selection.filter((id) => idsVisibles.has(id)))
+  }, [planningSuivi])
+
   function demarrerEdition(tache: TachePeriodique) {
     setEdition(tache)
+    setIdsCategoriesCreation([])
     setForm({
       nom: tache.nom,
       code: tache.code,
@@ -104,12 +115,14 @@ export function TachesPeriodiques() {
   function annulerEdition() {
     setEdition(null)
     setForm(payloadVide())
+    setIdsCategoriesCreation([])
   }
 
   async function enregistrerTache(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const idsCategories = edition ? (form.id_categorie_lieu ? [form.id_categorie_lieu] : []) : idsCategoriesCreation
 
-    if (!form.nom.trim() || !form.id_categorie_lieu) {
+    if (!form.nom.trim() || idsCategories.length === 0) {
       toast.error('Le nom et la categorie de lieu sont obligatoires.')
       return
     }
@@ -118,8 +131,20 @@ export function TachesPeriodiques() {
     try {
       const payload = { ...form, nom: form.nom.trim(), code: form.code?.trim() || null }
       if (edition) await modifierTachePeriodique(edition.id, payload)
-      else await creerTachePeriodique(payload)
-      toast.success(edition ? 'Tache modifiee.' : 'Tache creee.')
+      else if (idsCategories.length === 1) await creerTachePeriodique({ ...payload, id_categorie_lieu: idsCategories[0] })
+      else {
+        const codeBase = payload.code
+        const payloads = idsCategories.map((idCategorie) => {
+          const categorie = categories.find((item) => item.id === idCategorie)
+          return {
+            ...payload,
+            id_categorie_lieu: idCategorie,
+            code: codeBase && categorie?.code ? `${codeBase}-${categorie.code}` : codeBase,
+          }
+        })
+        await creerTachesPeriodiques(payloads)
+      }
+      toast.success(edition ? 'Tache modifiee.' : `${idsCategories.length} tache(s) creee(s).`)
       annulerEdition()
       await charger()
     } catch (error) {
@@ -127,6 +152,10 @@ export function TachesPeriodiques() {
     } finally {
       setSoumission(false)
     }
+  }
+
+  function basculerCategorieCreation(idCategorie: string, coche: boolean) {
+    setIdsCategoriesCreation((selection) => coche ? Array.from(new Set([...selection, idCategorie])) : selection.filter((id) => id !== idCategorie))
   }
 
   async function supprimerTache(tache: TachePeriodique) {
@@ -210,6 +239,49 @@ export function TachesPeriodiques() {
       await charger()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Validation impossible.')
+    }
+  }
+
+  function basculerTacheSuivi(id: string, coche: boolean) {
+    setIdsTachesSelectionnees((selection) => coche ? Array.from(new Set([...selection, id])) : selection.filter((item) => item !== id))
+  }
+
+  function selectionnerToutesTachesSuivi(coche: boolean) {
+    setIdsTachesSelectionnees(coche ? planningSuivi.map((item) => item.id) : [])
+  }
+
+  async function attribuerSelection() {
+    const etatAFaire = etats.find((etat) => etat.nom === 'A_FAIRE')
+
+    if (idsTachesSelectionnees.length === 0) {
+      toast.error('Selectionnez au moins une tache.')
+      return
+    }
+
+    if (!idExecutantAttributionLot) {
+      toast.error('Choisissez un executant.')
+      return
+    }
+
+    if (!etatAFaire) {
+      toast.error("L'etat A_FAIRE est introuvable.")
+      return
+    }
+
+    setSoumission(true)
+    try {
+      await Promise.all(idsTachesSelectionnees.map((id) => modifierPlanningTachePeriodique(id, {
+        id_executant: idExecutantAttributionLot,
+        id_etat: etatAFaire.id,
+      })))
+      toast.success(`${idsTachesSelectionnees.length} tache(s) attribuee(s).`)
+      setIdsTachesSelectionnees([])
+      setIdExecutantAttributionLot('')
+      await charger()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Attribution impossible.')
+    } finally {
+      setSoumission(false)
     }
   }
 
@@ -310,10 +382,30 @@ export function TachesPeriodiques() {
             <Champ label="Nom"><input value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} className={inputClass} /></Champ>
             <Champ label="Code"><input value={form.code || ''} onChange={(e) => setForm({ ...form, code: e.target.value })} className={inputClass} /></Champ>
             <Champ label="Categorie de lieu">
-              <select value={form.id_categorie_lieu || ''} onChange={(e) => setForm({ ...form, id_categorie_lieu: e.target.value || null })} className={inputClass}>
-                <option value="">Choisir</option>
-                {categories.map((categorie) => <option key={categorie.id} value={categorie.id}>{categorie.nom}</option>)}
-              </select>
+              {edition ? (
+                <select value={form.id_categorie_lieu || ''} onChange={(e) => setForm({ ...form, id_categorie_lieu: e.target.value || null })} className={inputClass}>
+                  <option value="">Choisir</option>
+                  {categories.map((categorie) => <option key={categorie.id} value={categorie.id}>{categorie.nom}</option>)}
+                </select>
+              ) : (
+                <div className="max-h-44 space-y-2 overflow-y-auto rounded-md border border-slate-300 bg-white p-2">
+                  {categories.length === 0 && <p className="px-1 py-2 text-sm text-slate-500">Aucune categorie disponible.</p>}
+                  {categories.map((categorie) => (
+                    <label key={categorie.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={idsCategoriesCreation.includes(categorie.id)}
+                        onChange={(e) => basculerCategorieCreation(categorie.id, e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                      />
+                      <span>{categorie.nom}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {!edition && idsCategoriesCreation.length > 1 && (
+                <p className="mt-1 text-xs text-slate-500">{idsCategoriesCreation.length} taches seront creees, une par categorie selectionnee.</p>
+              )}
             </Champ>
             <div className="grid grid-cols-2 gap-3">
               <Champ label="Frequence"><input type="number" min={1} value={form.frequence_jours} onChange={(e) => setForm({ ...form, frequence_jours: Number(e.target.value) })} className={inputClass} /></Champ>
@@ -367,15 +459,48 @@ export function TachesPeriodiques() {
             <h2 className="font-semibold text-slate-950">A traiter maintenant</h2>
             <p className="mt-1 text-sm text-slate-500">Taches en retard et taches dues aujourd'hui.</p>
           </div>
+          {idsTachesSelectionnees.length > 0 && (
+            <div className="flex flex-col gap-3 border-b border-teal-100 bg-teal-50 p-4 lg:flex-row lg:items-center lg:justify-between">
+              <p className="text-sm font-semibold text-teal-900">{idsTachesSelectionnees.length} tache(s) selectionnee(s)</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select value={idExecutantAttributionLot} onChange={(e) => setIdExecutantAttributionLot(e.target.value)} className={inputClass}>
+                  <option value="">Choisir un executant</option>
+                  {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
+                </select>
+                <button type="button" disabled={soumission || !idExecutantAttributionLot} onClick={() => void attribuerSelection()} className="h-10 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white disabled:opacity-60">Attribuer</button>
+                <button type="button" onClick={() => { setIdsTachesSelectionnees([]); setIdExecutantAttributionLot('') }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">Annuler</button>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50"><tr><Th>Tache</Th><Th>Lieu</Th><Th>Echeance</Th><Th>Classification</Th><Th>Etat</Th><Th>Executant</Th><Th>Actions</Th></tr></thead>
+              <thead className="bg-slate-50">
+                <tr>
+                  <Th>
+                    <input
+                      type="checkbox"
+                      checked={toutesTachesSuiviSelectionnees}
+                      onChange={(e) => selectionnerToutesTachesSuivi(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                    />
+                  </Th>
+                  <Th>Tache</Th><Th>Lieu</Th><Th>Echeance</Th><Th>Classification</Th><Th>Etat</Th><Th>Executant</Th><Th>Actions</Th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-slate-200">
-                {planningSuivi.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Aucune tache urgente a traiter.</td></tr>}
+                {planningSuivi.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">Aucune tache urgente a traiter.</td></tr>}
                 {planningSuivi.map((item) => {
                   const classification = classifications.get(item.id)
                   return (
                     <tr key={item.id}>
+                      <Td>
+                        <input
+                          type="checkbox"
+                          checked={idsTachesSelectionnees.includes(item.id)}
+                          onChange={(e) => basculerTacheSuivi(item.id, e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                        />
+                      </Td>
                       <Td><p className="font-semibold text-slate-900">{item.tache?.nom}</p><p className="text-xs text-slate-500">{item.tache?.nature} - {item.tache?.points_estimes} pts</p></Td>
                       <Td>{item.lieu?.nom}</Td>
                       <Td>{formatDateCourte(item.date_echeance)}{item.est_reportee && <p className="text-xs text-amber-700">Reportee</p>}</Td>

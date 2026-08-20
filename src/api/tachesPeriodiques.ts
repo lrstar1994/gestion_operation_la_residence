@@ -90,6 +90,14 @@ export async function creerTachePeriodique(payload: TachePeriodiquePayload) {
   return data
 }
 
+export async function creerTachesPeriodiques(payloads: TachePeriodiquePayload[]) {
+  if (payloads.length === 0) return []
+
+  const { data, error } = await supabase.from('tache_periodique').insert(payloads).select(selectTache).returns<TachePeriodique[]>()
+  if (error) throw error
+  return data
+}
+
 export async function modifierTachePeriodique(id: string, payload: TachePeriodiquePayload) {
   const { data, error } = await supabase.from('tache_periodique').update(payload).eq('id', id).select(selectTache).single<TachePeriodique>()
   if (error) throw error
