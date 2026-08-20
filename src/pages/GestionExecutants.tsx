@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Edit2, Plus, Trash2, UserRoundCog, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
+  creerDomaineExecutant,
   creerExecutant,
   listerDomainesExecutants,
   listerExecutants,
@@ -19,10 +20,20 @@ type FormulaireExecutant = {
   id_domaine: string
 }
 
+type FormulaireDomaine = {
+  nom: string
+  capacite_max: string
+}
+
 const formulaireInitial: FormulaireExecutant = {
   id: null,
   nom: '',
   id_domaine: '',
+}
+
+const formulaireDomaineInitial: FormulaireDomaine = {
+  nom: '',
+  capacite_max: '',
 }
 
 export function GestionExecutants() {
@@ -34,6 +45,8 @@ export function GestionExecutants() {
   const [actionEnCours, setActionEnCours] = useState<string | null>(null)
   const [capacitesDomaines, setCapacitesDomaines] = useState<Record<string, string>>({})
   const [domaineEnCours, setDomaineEnCours] = useState<string | null>(null)
+  const [formulaireDomaine, setFormulaireDomaine] = useState<FormulaireDomaine>(formulaireDomaineInitial)
+  const [soumissionDomaine, setSoumissionDomaine] = useState(false)
   const { estAdmin, peutAccederAuDomaine } = useAuth()
 
   const peutModifier = estAdmin() || peutAccederAuDomaine('chambres') || peutAccederAuDomaine('salles')
@@ -159,16 +172,52 @@ export function GestionExecutants() {
     }
   }
 
+  async function gererCreationDomaine(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!estAdmin()) {
+      toast.error("Seul l'admin peut ajouter un domaine.")
+      return
+    }
+
+    const nom = formulaireDomaine.nom.trim()
+    const capacite = convertirCapacite(formulaireDomaine.capacite_max)
+
+    if (nom.length < 2) {
+      toast.error('Le nom du domaine doit contenir au moins 2 caracteres.')
+      return
+    }
+
+    if (capacite === false) {
+      toast.error('La capacite doit etre un nombre entier positif, ou vide pour illimite.')
+      return
+    }
+
+    setSoumissionDomaine(true)
+
+    try {
+      const domaine = await creerDomaineExecutant({ nom, capacite_max: capacite })
+      setDomaines((liste) => [...liste, domaine].sort((a, b) => a.nom.localeCompare(b.nom)))
+      setCapacitesDomaines((etat) => ({ ...etat, [domaine.id]: domaine.capacite_max?.toString() || '' }))
+      setFormulaire((etat) => ({ ...etat, id_domaine: etat.id_domaine || domaine.id }))
+      setFormulaireDomaine(formulaireDomaineInitial)
+      toast.success('Domaine executant ajoute.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Creation du domaine impossible.')
+    } finally {
+      setSoumissionDomaine(false)
+    }
+  }
+
   async function enregistrerCapaciteDomaine(domaine: DomaineExecutant) {
     if (!estAdmin()) {
       toast.error("Seul l'admin peut modifier la capacite des domaines.")
       return
     }
 
-    const valeur = capacitesDomaines[domaine.id]?.trim() || ''
-    const capacite = valeur === '' ? null : Number(valeur)
+    const capacite = convertirCapacite(capacitesDomaines[domaine.id] || '')
 
-    if (valeur !== '' && (!Number.isInteger(capacite) || capacite < 0)) {
+    if (capacite === false) {
       toast.error('La capacite doit etre un nombre entier positif, ou vide pour illimite.')
       return
     }
@@ -205,42 +254,84 @@ export function GestionExecutants() {
       </div>
 
       {estAdmin() && (
-        <div className="mb-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4">
-            <h2 className="text-base font-semibold text-slate-950">Capacite des domaines executants</h2>
-            <p className="mt-1 text-sm text-slate-500">Les noms restent verrouilles car ils sont utilises par les regles metier. Vide = capacite illimitee.</p>
-          </div>
+        <div className="mb-5 grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+          <form onSubmit={gererCreationDomaine} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-5">
+              <h2 className="text-base font-semibold text-slate-950">Ajouter un domaine executant</h2>
+              <p className="mt-1 text-sm text-slate-500">Le nom sera ensuite verrouille pour proteger les regles metier.</p>
+            </div>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {domaines.map((domaine) => (
-              <div key={domaine.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <p className="font-semibold text-slate-900">{domaine.nom}</p>
-                  <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                    {domaine.capacite_max ?? 'Illimite'}
-                  </span>
+            <label className="mb-4 block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Nom</span>
+              <input
+                type="text"
+                value={formulaireDomaine.nom}
+                onChange={(event) => setFormulaireDomaine((etat) => ({ ...etat, nom: event.target.value }))}
+                placeholder="ex: femme de chambre"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+              />
+            </label>
+
+            <label className="mb-5 block">
+              <span className="mb-1 block text-sm font-medium text-slate-700">Capacite max</span>
+              <input
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={formulaireDomaine.capacite_max}
+                onChange={(event) => setFormulaireDomaine((etat) => ({ ...etat, capacite_max: event.target.value }))}
+                placeholder="Vide = illimite"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+              />
+            </label>
+
+            <button
+              type="submit"
+              disabled={soumissionDomaine}
+              className="flex w-full items-center justify-center gap-2 rounded-md bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Plus className="h-4 w-4" />
+              {soumissionDomaine ? 'Enregistrement...' : 'Ajouter le domaine'}
+            </button>
+          </form>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4">
+              <h2 className="text-base font-semibold text-slate-950">Capacite des domaines executants</h2>
+              <p className="mt-1 text-sm text-slate-500">Les noms existants ne sont pas modifiables. Vide = capacite illimitee.</p>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+              {domaines.map((domaine) => (
+                <div key={domaine.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">{domaine.nom}</p>
+                    <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                      {domaine.capacite_max ?? 'Illimite'}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      inputMode="numeric"
+                      value={capacitesDomaines[domaine.id] ?? ''}
+                      onChange={(event) => setCapacitesDomaines((etat) => ({ ...etat, [domaine.id]: event.target.value }))}
+                      placeholder="Illimite"
+                      className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                    />
+                    <button
+                      type="button"
+                      disabled={domaineEnCours === domaine.id}
+                      onClick={() => void enregistrerCapaciteDomaine(domaine)}
+                      className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
+                    >
+                      OK
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    inputMode="numeric"
-                    value={capacitesDomaines[domaine.id] ?? ''}
-                    onChange={(event) => setCapacitesDomaines((etat) => ({ ...etat, [domaine.id]: event.target.value }))}
-                    placeholder="Illimite"
-                    className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                  />
-                  <button
-                    type="button"
-                    disabled={domaineEnCours === domaine.id}
-                    onClick={() => void enregistrerCapaciteDomaine(domaine)}
-                    className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
-                  >
-                    OK
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -368,4 +459,14 @@ export function GestionExecutants() {
       </div>
     </section>
   )
+}
+
+function convertirCapacite(valeur: string): number | null | false {
+  const texte = valeur.trim()
+  if (texte === '') return null
+
+  const nombre = Number(texte)
+  if (!Number.isInteger(nombre) || nombre < 0) return false
+
+  return nombre
 }
