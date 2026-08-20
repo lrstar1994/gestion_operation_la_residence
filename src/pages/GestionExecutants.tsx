@@ -21,6 +21,7 @@ type FormulaireExecutant = {
 }
 
 type FormulaireDomaine = {
+  id: string | null
   nom: string
   capacite_max: string
 }
@@ -32,6 +33,7 @@ const formulaireInitial: FormulaireExecutant = {
 }
 
 const formulaireDomaineInitial: FormulaireDomaine = {
+  id: null,
   nom: '',
   capacite_max: '',
 }
@@ -43,8 +45,6 @@ export function GestionExecutants() {
   const [chargement, setChargement] = useState(true)
   const [soumission, setSoumission] = useState(false)
   const [actionEnCours, setActionEnCours] = useState<string | null>(null)
-  const [capacitesDomaines, setCapacitesDomaines] = useState<Record<string, string>>({})
-  const [domaineEnCours, setDomaineEnCours] = useState<string | null>(null)
   const [formulaireDomaine, setFormulaireDomaine] = useState<FormulaireDomaine>(formulaireDomaineInitial)
   const [soumissionDomaine, setSoumissionDomaine] = useState(false)
   const { estAdmin, peutAccederAuDomaine } = useAuth()
@@ -71,7 +71,6 @@ export function GestionExecutants() {
 
       setDomaines(domainesResultat)
       setExecutants(executantsResultat)
-      setCapacitesDomaines(Object.fromEntries(domainesResultat.map((domaine) => [domaine.id, domaine.capacite_max?.toString() || ''])))
       setFormulaire((etat) => ({
         ...etat,
         id_domaine: etat.id_domaine || domainesResultat[0]?.id || '',
@@ -172,11 +171,23 @@ export function GestionExecutants() {
     }
   }
 
-  async function gererCreationDomaine(event: React.FormEvent<HTMLFormElement>) {
+  function reinitialiserFormulaireDomaine() {
+    setFormulaireDomaine(formulaireDomaineInitial)
+  }
+
+  function modifierDomaine(domaine: DomaineExecutant) {
+    setFormulaireDomaine({
+      id: domaine.id,
+      nom: domaine.nom,
+      capacite_max: domaine.capacite_max?.toString() || '',
+    })
+  }
+
+  async function gererSoumissionDomaine(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (!estAdmin()) {
-      toast.error("Seul l'admin peut ajouter un domaine.")
+      toast.error("Seul l'admin peut gérer les domaines.")
       return
     }
 
@@ -196,48 +207,26 @@ export function GestionExecutants() {
     setSoumissionDomaine(true)
 
     try {
-      const domaine = await creerDomaineExecutant({ nom, capacite_max: capacite })
-      setDomaines((liste) => [...liste, domaine].sort((a, b) => a.nom.localeCompare(b.nom)))
-      setCapacitesDomaines((etat) => ({ ...etat, [domaine.id]: domaine.capacite_max?.toString() || '' }))
-      setFormulaire((etat) => ({ ...etat, id_domaine: etat.id_domaine || domaine.id }))
-      setFormulaireDomaine(formulaireDomaineInitial)
-      toast.success('Domaine executant ajoute.')
+      if (formulaireDomaine.id) {
+        const domaine = await modifierDomaineExecutant(formulaireDomaine.id, { capacite_max: capacite })
+        setDomaines((liste) => liste.map((item) => (item.id === domaine.id ? domaine : item)))
+        setExecutants((liste) => liste.map((executant) => (
+          executant.id_domaine === domaine.id
+            ? { ...executant, domaine }
+            : executant
+        )))
+        toast.success('Domaine executant modifie.')
+      } else {
+        const domaine = await creerDomaineExecutant({ nom, capacite_max: capacite })
+        setDomaines((liste) => [...liste, domaine].sort((a, b) => a.nom.localeCompare(b.nom)))
+        setFormulaire((etat) => ({ ...etat, id_domaine: etat.id_domaine || domaine.id }))
+        toast.success('Domaine executant ajoute.')
+      }
+      reinitialiserFormulaireDomaine()
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Creation du domaine impossible.')
+      toast.error(error instanceof Error ? error.message : 'Enregistrement du domaine impossible.')
     } finally {
       setSoumissionDomaine(false)
-    }
-  }
-
-  async function enregistrerCapaciteDomaine(domaine: DomaineExecutant) {
-    if (!estAdmin()) {
-      toast.error("Seul l'admin peut modifier la capacite des domaines.")
-      return
-    }
-
-    const capacite = convertirCapacite(capacitesDomaines[domaine.id] || '')
-
-    if (capacite === false) {
-      toast.error('La capacite doit etre un nombre entier positif, ou vide pour illimite.')
-      return
-    }
-
-    setDomaineEnCours(domaine.id)
-
-    try {
-      const domaineModifie = await modifierDomaineExecutant(domaine.id, { capacite_max: capacite })
-      setDomaines((liste) => liste.map((item) => (item.id === domaineModifie.id ? domaineModifie : item)))
-      setExecutants((liste) => liste.map((executant) => (
-        executant.id_domaine === domaineModifie.id
-          ? { ...executant, domaine: domaineModifie }
-          : executant
-      )))
-      setCapacitesDomaines((etat) => ({ ...etat, [domaineModifie.id]: domaineModifie.capacite_max?.toString() || '' }))
-      toast.success('Capacite mise a jour.')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Modification impossible.')
-    } finally {
-      setDomaineEnCours(null)
     }
   }
 
@@ -255,10 +244,24 @@ export function GestionExecutants() {
 
       {estAdmin() && (
         <div className="mb-5 grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-          <form onSubmit={gererCreationDomaine} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-5">
-              <h2 className="text-base font-semibold text-slate-950">Ajouter un domaine executant</h2>
-              <p className="mt-1 text-sm text-slate-500">Le nom sera ensuite verrouille pour proteger les regles metier.</p>
+          <form onSubmit={gererSoumissionDomaine} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-slate-950">
+                  {formulaireDomaine.id ? 'Modifier un domaine executant' : 'Ajouter un domaine executant'}
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">En modification, seul la capacite max est modifiable.</p>
+              </div>
+              {formulaireDomaine.id && (
+                <button
+                  type="button"
+                  onClick={reinitialiserFormulaireDomaine}
+                  className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                  aria-label="Annuler la modification"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
 
             <label className="mb-4 block">
@@ -266,9 +269,10 @@ export function GestionExecutants() {
               <input
                 type="text"
                 value={formulaireDomaine.nom}
+                disabled={Boolean(formulaireDomaine.id)}
                 onChange={(event) => setFormulaireDomaine((etat) => ({ ...etat, nom: event.target.value }))}
                 placeholder="ex: femme de chambre"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100 disabled:bg-slate-100"
               />
             </label>
 
@@ -291,46 +295,51 @@ export function GestionExecutants() {
               className="flex w-full items-center justify-center gap-2 rounded-md bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Plus className="h-4 w-4" />
-              {soumissionDomaine ? 'Enregistrement...' : 'Ajouter le domaine'}
+              {soumissionDomaine ? 'Enregistrement...' : formulaireDomaine.id ? 'Enregistrer' : 'Ajouter le domaine'}
             </button>
           </form>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="mb-4">
-              <h2 className="text-base font-semibold text-slate-950">Capacite des domaines executants</h2>
-              <p className="mt-1 text-sm text-slate-500">Les noms existants ne sont pas modifiables. Vide = capacite illimitee.</p>
+              <div className="border-b border-slate-200 px-5 py-4">
+                <h2 className="text-base font-semibold text-slate-950">Domaines executants</h2>
+                <p className="mt-1 text-sm text-slate-500">Les noms existants ne sont pas modifiables. Vide = capacite illimitee.</p>
+              </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-              {domaines.map((domaine) => (
-                <div key={domaine.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <p className="font-semibold text-slate-900">{domaine.nom}</p>
-                    <span className="rounded-md bg-white px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                      {domaine.capacite_max ?? 'Illimite'}
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      min={0}
-                      inputMode="numeric"
-                      value={capacitesDomaines[domaine.id] ?? ''}
-                      onChange={(event) => setCapacitesDomaines((etat) => ({ ...etat, [domaine.id]: event.target.value }))}
-                      placeholder="Illimite"
-                      className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100"
-                    />
-                    <button
-                      type="button"
-                      disabled={domaineEnCours === domaine.id}
-                      onClick={() => void enregistrerCapaciteDomaine(domaine)}
-                      className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60"
-                    >
-                      OK
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Nom</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Capacite max</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {domaines.map((domaine) => (
+                    <tr key={domaine.id} className={formulaireDomaine.id === domaine.id ? 'bg-teal-50/60' : 'bg-white'}>
+                      <td className="px-4 py-3 font-medium text-slate-900">{domaine.nom}</td>
+                      <td className="px-4 py-3 text-slate-600">{domaine.capacite_max ?? 'Illimite'}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => modifierDomaine(domaine)}
+                          className="rounded-md p-2 text-slate-500 hover:bg-teal-50 hover:text-teal-700"
+                          aria-label="Modifier le domaine"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {domaines.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-8 text-center text-slate-500">Aucun domaine executant.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
