@@ -114,14 +114,18 @@ export function usePlanningChambre(dateDebut: string, dateFin?: string) {
     return executants.filter((executant) => estExecutantEnTravail(executant.id, date))
   }
 
-  function mouvementPayload(chambre: Lieu, date: string, typeId: string, executantId?: string | null): PlanningChambrePayload {
-    const executantCandidat = executantId ?? executantDefautPourChambre(chambre)
+  function mouvementPayload(chambre: Lieu, date: string, typeId: string, executantIds?: string[] | string | null): PlanningChambrePayload {
+    const idsDemandes = Array.isArray(executantIds) ? executantIds : executantIds ? [executantIds] : []
+    const idsExecutants = idsDemandes.length > 0
+      ? idsDemandes.filter((id) => estExecutantEnTravail(id, date))
+      : [executantDefautPourChambre(chambre)].filter((id): id is string => Boolean(id) && estExecutantEnTravail(id, date))
 
     return {
       id_lieu: chambre.id,
       date,
       id_type_mouvement: typeId,
-      id_executant: estExecutantEnTravail(executantCandidat, date) ? executantCandidat : null,
+      id_executant: idsExecutants[0] || null,
+      id_executants: idsExecutants,
       id_etat: etatAffecte?.id || '',
     }
   }
@@ -131,34 +135,37 @@ export function usePlanningChambre(dateDebut: string, dateFin?: string) {
     const pointsAjoutes = new Map<string, number>()
 
     payloads.forEach((payload) => {
-      if (!payload.id_executant) return
-      const cle = `${payload.id_executant}-${payload.date}`
-      pointsAjoutes.set(
-        cle,
-        (pointsAjoutes.get(cle) || 0) + (pointsParType.get(payload.id_type_mouvement) || 0),
-      )
+      const ids = payload.id_executants?.length ? payload.id_executants : payload.id_executant ? [payload.id_executant] : []
+      const pointsPartages = (pointsParType.get(payload.id_type_mouvement) || 0) / Math.max(ids.length, 1)
+
+      ids.forEach((idExecutant) => {
+        const cle = `${idExecutant}-${payload.date}`
+        pointsAjoutes.set(cle, (pointsAjoutes.get(cle) || 0) + pointsPartages)
+      })
     })
 
     const suggestions: SuggestionAffectation[] = []
 
     payloads.forEach((payload) => {
-      if (!payload.id_executant) return
+      const ids = payload.id_executants?.length ? payload.id_executants : payload.id_executant ? [payload.id_executant] : []
+      const idPrincipal = ids[0]
+      if (!idPrincipal) return
 
-      const charge = charges.find((item) => item.executant.id === payload.id_executant) || null
+      const charge = charges.find((item) => item.executant.id === idPrincipal) || null
       const chargeJour = charge?.pointsParDate.find((item) => item.date === payload.date)
-      const ajout = pointsAjoutes.get(`${payload.id_executant}-${payload.date}`) || 0
+      const ajout = pointsAjoutes.get(`${idPrincipal}-${payload.date}`) || 0
       const pointsJour = chargeJour?.points || 0
 
       if (!charge?.capaciteMax || pointsJour + ajout <= charge.capaciteMax) {
         return
       }
 
-      const mouvementPoints = pointsParType.get(payload.id_type_mouvement) || 0
+      const mouvementPoints = (pointsParType.get(payload.id_type_mouvement) || 0) / Math.max(ids.length, 1)
       suggestions.push({
         payload,
         chargeActuelle: charge,
         suggestions: charges
-          .filter((item) => item.executant.id !== payload.id_executant)
+          .filter((item) => !ids.includes(item.executant.id))
           .filter((item) => item.executant.domaine?.nom.toLowerCase().includes('chambre'))
           .filter((item) => estExecutantEnTravail(item.executant.id, payload.date))
           .filter((item) => {

@@ -5,6 +5,8 @@ import { listerExecutants, type Executant } from '../api/executants'
 import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
 import { listerPlanning, type PlanningExecutant } from '../api/planning'
 import {
+  idsExecutantsPlanningChambre,
+  libelleExecutantsPlanningChambre,
   listerEtatsMouvement,
   listerPlanningChambre,
   type EtatMouvement,
@@ -12,6 +14,8 @@ import {
 } from '../api/planningChambre'
 import {
   creerTacheChambre,
+  idsExecutantsTacheChambre,
+  libelleExecutantsTacheChambre,
   listerToutesTachesChambres,
   listerTachesChambres,
   modifierTacheChambre,
@@ -30,11 +34,13 @@ type ItemPlanningTravail = {
   date: string
   id_lieu: string
   id_executant: string | null
+  id_executants: string[]
   id_etat: string
   points: number
   lieu: Lieu | null
   type: PlanningChambre['type_mouvement'] | null
   executant: Executant | null
+  executants: Array<{ id: string; id_executant: string; executant?: Executant | null }>
   urgence: UrgenceTacheChambre
   dateMouvement: string
   tache: TacheChambre | null
@@ -87,13 +93,13 @@ export function TravailChambres() {
   const [idMouvement, setIdMouvement] = useState('')
   const [dateExecution, setDateExecution] = useState(aujourdHui)
   const [dateLimite, setDateLimite] = useState(aujourdHui)
-  const [idExecutant, setIdExecutant] = useState('')
+  const [idsExecutants, setIdsExecutants] = useState<string[]>([])
   const [urgence, setUrgence] = useState<UrgenceTacheChambre>('normale')
   const [commentaire, setCommentaire] = useState('')
   const [modalItem, setModalItem] = useState<ItemPlanningTravail | null>(null)
   const [modalDateExecution, setModalDateExecution] = useState('')
   const [modalDateLimite, setModalDateLimite] = useState('')
-  const [modalExecutant, setModalExecutant] = useState('')
+  const [modalExecutants, setModalExecutants] = useState<string[]>([])
   const [modalEtat, setModalEtat] = useState('')
   const [modalUrgence, setModalUrgence] = useState<UrgenceTacheChambre>('normale')
   const [modalCommentaire, setModalCommentaire] = useState('')
@@ -171,10 +177,11 @@ export function TravailChambres() {
 
     setDateLimite(mouvementSelectionne.date)
     const prochaineDateExecution = mouvementSelectionne.date < aujourdHui ? aujourdHui : mouvementSelectionne.date
-    const executantPropose = mouvementSelectionne.id_executant || executantDefautPourLieu(mouvementSelectionne.lieu) || ''
+    const idsProposes = idsExecutantsPlanningChambre(mouvementSelectionne)
+    const executantPropose = idsProposes[0] || executantDefautPourLieu(mouvementSelectionne.lieu) || ''
 
     setDateExecution(prochaineDateExecution)
-    setIdExecutant(estExecutantEnTravail(executantPropose, prochaineDateExecution) ? executantPropose : '')
+    setIdsExecutants(idsProposes.length > 0 ? idsProposes.filter((id) => estExecutantEnTravail(id, prochaineDateExecution)) : (estExecutantEnTravail(executantPropose, prochaineDateExecution) ? [executantPropose] : []))
     setUrgence(urgenceDepuisMouvement(mouvementSelectionne.date, aujourdHui))
   }, [aujourdHui, mouvementSelectionne, planningExecutants])
 
@@ -183,7 +190,7 @@ export function TravailChambres() {
 
     return taches
       .filter((tache) => batimentFiltre === 'tous' || tache.lieu?.id_batiment === batimentFiltre)
-      .filter((tache) => executantFiltre === 'tous' || tache.id_executant === executantFiltre)
+      .filter((tache) => executantFiltre === 'tous' || idsExecutantsTacheChambre(tache).includes(executantFiltre))
       .filter((tache) => etatFiltre === 'tous' || tache.id_etat === etatFiltre)
       .filter((tache) => {
         if (!terme) return true
@@ -192,7 +199,7 @@ export function TravailChambres() {
           tache.lieu?.numero,
           tache.lieu?.batiment?.nom,
           tache.type_mouvement?.nom,
-          tache.executant?.nom,
+          libelleExecutantsTacheChambre(tache),
           tache.commentaire,
         ].filter(Boolean).join(' ').toLowerCase().includes(terme)
       })
@@ -208,11 +215,13 @@ export function TravailChambres() {
         date: tache.date_execution,
         id_lieu: tache.id_lieu,
         id_executant: tache.id_executant,
+        id_executants: idsExecutantsTacheChambre(tache),
         id_etat: tache.id_etat,
         points: tache.points,
         lieu: tache.lieu || null,
         type: tache.type_mouvement || null,
         executant: tache.executant || null,
+        executants: tache.executants || [],
         urgence: tache.urgence,
         dateMouvement: tache.date_mouvement,
         tache,
@@ -227,11 +236,13 @@ export function TravailChambres() {
         date: mouvement.date,
         id_lieu: mouvement.id_lieu,
         id_executant: mouvement.id_executant,
+        id_executants: idsExecutantsPlanningChambre(mouvement),
         id_etat: mouvement.id_etat,
         points: mouvement.type_mouvement?.points || 0,
         lieu: mouvement.lieu || null,
         type: mouvement.type_mouvement || null,
         executant: mouvement.executant || null,
+        executants: mouvement.executants || [],
         urgence: urgenceDepuisMouvement(mouvement.date, aujourdHui),
         dateMouvement: mouvement.date,
         tache: null as TacheChambre | null,
@@ -242,7 +253,7 @@ export function TravailChambres() {
     return items
       .filter((item) => item.date >= dateDebut && item.date <= dateFin)
       .filter((item) => batimentFiltre === 'tous' || item.lieu?.id_batiment === batimentFiltre)
-      .filter((item) => executantFiltre === 'tous' || item.id_executant === executantFiltre)
+      .filter((item) => executantFiltre === 'tous' || item.id_executants.includes(executantFiltre))
       .filter((item) => etatFiltre === 'tous' || item.id_etat === etatFiltre)
       .filter((item) => {
         if (!terme) return true
@@ -251,7 +262,7 @@ export function TravailChambres() {
           item.lieu?.numero,
           item.lieu?.batiment?.nom,
           item.type?.nom,
-          item.executant?.nom,
+          libelleExecutantsItem(item),
           item.tache?.commentaire,
         ].filter(Boolean).join(' ').toLowerCase().includes(terme)
       })
@@ -316,18 +327,22 @@ export function TravailChambres() {
       })
 
     itemsPlanning.forEach((item) => {
-      if (!item.id_executant || !item.executant || !estFemmeDeChambre(item.executant)) return
+      const executantsItem = executantsItemPlanning(item).filter((executant) => estFemmeDeChambre(executant))
+      if (executantsItem.length === 0) return
 
-      const charge = map.get(item.id_executant) || {
-        executant: item.executant,
-        points: 0,
-        capaciteMax: item.executant?.domaine?.capacite_max ?? null,
-        pointsParDate: new Map<string, number>(),
-      }
+      const pointsPartages = item.points / executantsItem.length
+      executantsItem.forEach((executant) => {
+        const charge = map.get(executant.id) || {
+          executant,
+          points: 0,
+          capaciteMax: executant.domaine?.capacite_max ?? null,
+          pointsParDate: new Map<string, number>(),
+        }
 
-      charge.points += item.points
-      charge.pointsParDate.set(item.date, (charge.pointsParDate.get(item.date) || 0) + item.points)
-      map.set(item.id_executant, charge)
+        charge.points += pointsPartages
+        charge.pointsParDate.set(item.date, (charge.pointsParDate.get(item.date) || 0) + pointsPartages)
+        map.set(executant.id, charge)
+      })
     })
 
     return Array.from(map.entries())
@@ -384,23 +399,23 @@ export function TravailChambres() {
   )
 
   const validationCreation = useMemo(
-    () => verifierAffectation(idExecutant, dateExecution, mouvementSelectionne?.type_mouvement?.points || 0),
-    [dateExecution, idExecutant, mouvementSelectionne, taches, executants, planningExecutants],
+    () => verifierAffectation(idsExecutants, dateExecution, mouvementSelectionne?.type_mouvement?.points || 0),
+    [dateExecution, idsExecutants, mouvementSelectionne, taches, executants, planningExecutants],
   )
 
   const suggestionsCreation = useMemo(
-    () => suggestionsAffectation(dateExecution, mouvementSelectionne?.type_mouvement?.points || 0, idExecutant),
-    [dateExecution, idExecutant, mouvementSelectionne, taches, executants, planningExecutants],
+    () => suggestionsAffectation(dateExecution, mouvementSelectionne?.type_mouvement?.points || 0, idsExecutants[0]),
+    [dateExecution, idsExecutants, mouvementSelectionne, taches, executants, planningExecutants],
   )
 
   const validationModal = useMemo(
-    () => verifierAffectation(modalExecutant, modalDateExecution, modalItem?.points || 0, modalItem?.tache?.id),
-    [modalDateExecution, modalExecutant, modalItem, taches, executants, planningExecutants],
+    () => verifierAffectation(modalExecutants, modalDateExecution, modalItem?.points || 0, modalItem?.tache?.id),
+    [modalDateExecution, modalExecutants, modalItem, taches, executants, planningExecutants],
   )
 
   const suggestionsModal = useMemo(
-    () => suggestionsAffectation(modalDateExecution, modalItem?.points || 0, modalExecutant, modalItem?.tache?.id),
-    [modalDateExecution, modalExecutant, modalItem, taches, executants, planningExecutants],
+    () => suggestionsAffectation(modalDateExecution, modalItem?.points || 0, modalExecutants[0], modalItem?.tache?.id),
+    [modalDateExecution, modalExecutants, modalItem, taches, executants, planningExecutants],
   )
 
   function estExecutantEnTravail(executantId: string | null | undefined, date: string) {
@@ -422,34 +437,37 @@ export function TravailChambres() {
   function chargeExecutantJour(executantId: string, date: string, tacheAExclure?: string) {
     return taches
       .filter((tache) => tache.id !== tacheAExclure)
-      .filter((tache) => tache.id_executant === executantId && tache.date_execution === date)
-      .reduce((total, tache) => total + tache.points, 0)
+      .filter((tache) => idsExecutantsTacheChambre(tache).includes(executantId) && tache.date_execution === date)
+      .reduce((total, tache) => total + tache.points / Math.max(idsExecutantsTacheChambre(tache).length, 1), 0)
   }
 
-  function verifierAffectation(executantId: string, date: string, points: number, tacheAExclure?: string): ValidationAffectation {
-    if (!executantId) return { ok: true }
+  function verifierAffectation(ids: string[], date: string, points: number, tacheAExclure?: string): ValidationAffectation {
+    if (ids.length === 0) return { ok: true }
+    const pointsPartages = points / ids.length
 
-    const executant = executants.find((item) => item.id === executantId)
-    if (!executant || !estFemmeDeChambre(executant)) {
-      return { ok: false, message: 'Choisis une femme de chambre.' }
-    }
+    for (const executantId of ids) {
+      const executant = executants.find((item) => item.id === executantId)
+      if (!executant || !estFemmeDeChambre(executant)) {
+        return { ok: false, message: 'Choisis une femme de chambre.' }
+      }
 
-    if (!estExecutantEnTravail(executantId, date)) {
-      return { ok: false, message: `${executant.nom} n'est pas planifiee en travail le ${formatDate(date)}.` }
-    }
+      if (!estExecutantEnTravail(executantId, date)) {
+        return { ok: false, message: `${executant.nom} n'est pas planifiee en travail le ${formatDate(date)}.` }
+      }
 
-    const capaciteMax = executant.domaine?.capacite_max ?? null
-    const pointsApres = chargeExecutantJour(executantId, date, tacheAExclure) + points
-    if (capaciteMax !== null && pointsApres > capaciteMax) {
-      return {
-        ok: false,
-        message: `${executant.nom} serait en surcharge le ${formatDate(date)} (${pointsApres}/${capaciteMax} pts).`,
-        pointsApres,
-        capaciteMax,
+      const capaciteMax = executant.domaine?.capacite_max ?? null
+      const pointsApres = chargeExecutantJour(executantId, date, tacheAExclure) + pointsPartages
+      if (capaciteMax !== null && pointsApres > capaciteMax) {
+        return {
+          ok: false,
+          message: `${executant.nom} serait en surcharge le ${formatDate(date)} (${formatPoints(pointsApres)}/${capaciteMax} pts).`,
+          pointsApres,
+          capaciteMax,
+        }
       }
     }
 
-    return { ok: true, pointsApres, capaciteMax }
+    return { ok: true }
   }
 
   function suggestionsAffectation(date: string, points: number, executantActuel?: string, tacheAExclure?: string): SuggestionAffectation[] {
@@ -477,7 +495,7 @@ export function TravailChambres() {
       return
     }
 
-    const validation = verifierAffectation(idExecutant, dateExecution, mouvementSelectionne.type_mouvement?.points || 0)
+    const validation = verifierAffectation(idsExecutants, dateExecution, mouvementSelectionne.type_mouvement?.points || 0)
     if (!validation.ok) {
       toast.warning(validation.message || 'Affectation en surcharge.')
     }
@@ -491,17 +509,19 @@ export function TravailChambres() {
         date_mouvement: mouvementSelectionne.date,
         date_execution: dateExecution,
         date_limite: dateLimite,
-        id_executant: idExecutant || null,
+        id_executant: idsExecutants[0] || null,
+        id_executants: idsExecutants,
         id_etat: etatAffecte.id,
         points: mouvementSelectionne.type_mouvement?.points || 0,
         urgence,
         commentaire: commentaire.trim() || null,
       }
 
-      const tache = await creerTacheChambre(payload)
+    const tache = await creerTacheChambre(payload)
       setTaches((liste) => [...liste, tache])
       setToutesTaches((liste) => [...liste, tache])
       setIdMouvement('')
+      setIdsExecutants([])
       setCommentaire('')
       setFormulaireOuvert(false)
       toast.success('Tache chambre planifiee.')
@@ -537,12 +557,13 @@ export function TravailChambres() {
 
   function remplirDepuisMouvement(mouvement: PlanningChambre) {
     const prochaineDateExecution = mouvement.date < aujourdHui ? aujourdHui : mouvement.date
-    const executantPropose = mouvement.id_executant || executantDefautPourLieu(mouvement.lieu) || ''
+    const idsProposes = idsExecutantsPlanningChambre(mouvement)
+    const executantPropose = idsProposes[0] || executantDefautPourLieu(mouvement.lieu) || ''
 
     setIdMouvement(mouvement.id)
     setDateLimite(mouvement.date)
     setDateExecution(prochaineDateExecution)
-    setIdExecutant(estExecutantEnTravail(executantPropose, prochaineDateExecution) ? executantPropose : '')
+    setIdsExecutants(idsProposes.length > 0 ? idsProposes.filter((id) => estExecutantEnTravail(id, prochaineDateExecution)) : (estExecutantEnTravail(executantPropose, prochaineDateExecution) ? [executantPropose] : []))
     setUrgence(urgenceDepuisMouvement(mouvement.date, aujourdHui))
     setFormulaireOuvert(true)
   }
@@ -552,7 +573,7 @@ export function TravailChambres() {
     setModalItem(item)
     setModalDateExecution(item.tache.date_execution)
     setModalDateLimite(item.tache.date_limite)
-    setModalExecutant(item.tache.id_executant || '')
+    setModalExecutants(idsExecutantsTacheChambre(item.tache))
     setModalEtat(item.tache.id_etat)
     setModalUrgence(item.tache.urgence)
     setModalCommentaire(item.tache.commentaire || '')
@@ -567,7 +588,7 @@ export function TravailChambres() {
       return
     }
 
-    const validation = verifierAffectation(modalExecutant, modalDateExecution, modalItem.points, modalItem.tache.id)
+    const validation = verifierAffectation(modalExecutants, modalDateExecution, modalItem.points, modalItem.tache.id)
     if (!validation.ok) {
       toast.warning(validation.message || 'Affectation en surcharge.')
     }
@@ -575,7 +596,8 @@ export function TravailChambres() {
     await mettreAJourTache(modalItem.tache.id, {
       date_execution: modalDateExecution,
       date_limite: modalDateLimite,
-      id_executant: modalExecutant || null,
+      id_executant: modalExecutants[0] || null,
+      id_executants: modalExecutants,
       id_etat: modalEtat,
       urgence: modalUrgence,
       commentaire: modalCommentaire.trim() || null,
@@ -588,7 +610,7 @@ export function TravailChambres() {
     const datesExportSet = new Set(datesExport)
     const itemsExport = itemsPlanning
       .filter((item) => datesExportSet.has(item.date))
-      .filter((item) => !item.executant || estFemmeDeChambre(item.executant))
+      .filter((item) => executantsItemPlanning(item).length === 0 || executantsItemPlanning(item).some((executant) => estFemmeDeChambre(executant)))
 
     if (itemsExport.length === 0) {
       toast.error('Aucun travail chambre a exporter sur cette semaine.')
@@ -598,13 +620,27 @@ export function TravailChambres() {
     const groupes = new Map<string, { nom: string; items: ItemPlanningTravail[] }>()
 
     itemsExport.forEach((item) => {
-      const id = item.id_executant || 'non-affecte'
+      const executantsItem = executantsItemPlanning(item).filter((executant) => estFemmeDeChambre(executant))
+
+      if (executantsItem.length === 0) {
+        const groupe = groupes.get('non-affecte') || {
+          nom: 'Non affecte',
+          items: [],
+        }
+        groupe.items.push(item)
+        groupes.set('non-affecte', groupe)
+        return
+      }
+
+      executantsItem.forEach((executant) => {
+        const id = executant.id
       const groupe = groupes.get(id) || {
-        nom: item.executant?.nom || 'Non affecte',
+        nom: executant.nom,
         items: [],
       }
       groupe.items.push(item)
       groupes.set(id, groupe)
+      })
     })
 
     const lignes = Array.from(groupes.entries())
@@ -616,7 +652,7 @@ export function TravailChambres() {
       })
 
     const totalChambres = itemsExport.length
-    const nonAffectes = itemsExport.filter((item) => !item.id_executant).length
+    const nonAffectes = itemsExport.filter((item) => item.id_executants.length === 0).length
     const titrePeriode = `${formatDate(datesExport[0])} au ${formatDate(datesExport[6])}`
     const fenetre = window.open('', '_blank', 'width=1200,height=800')
 
@@ -840,7 +876,7 @@ export function TravailChambres() {
                                           </div>
                                           <p className="text-xs font-semibold">{libelleTravailChambre(item.type?.nom)} ({item.points} pt)</p>
                                           <p className="mt-1 text-xs opacity-75">Mouvement hotelier : {item.type?.nom || '-'}</p>
-                                          <p className="mt-1 truncate text-xs opacity-80">{item.executant?.nom || 'Non affecte'}</p>
+                                          <p className="mt-1 truncate text-xs opacity-80">{libelleExecutantsItem(item)}</p>
                                           {item.dateMouvement !== item.date && <p className="mt-1 text-xs opacity-75">Mouvement : {formatDate(item.dateMouvement)}</p>}
                                           {item.tache && (
                                             <button type="button" onClick={() => ouvrirModal(item)} className="mt-2 w-full rounded-md bg-teal-700 px-2 py-1.5 text-xs font-semibold text-white hover:bg-teal-800">
@@ -914,10 +950,12 @@ export function TravailChambres() {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <Champ label="Executant">
-                  <select value={idExecutant} onChange={(event) => setIdExecutant(event.target.value)} className={inputClass}>
-                    <option value="">Non affecte</option>
-                    {executantsCreationDisponibles.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
-                  </select>
+                  <MultiSelectExecutants
+                    executants={executantsCreationDisponibles}
+                    selection={idsExecutants}
+                    onChange={setIdsExecutants}
+                    placeholder="Non affecte"
+                  />
                 </Champ>
 
                 <Champ label="Urgence">
@@ -930,7 +968,7 @@ export function TravailChambres() {
               <AlerteAffectation
                 validation={validationCreation}
                 suggestions={suggestionsCreation}
-                onChoisir={(executantId) => setIdExecutant(executantId)}
+                onChoisir={(executantId) => setIdsExecutants([executantId])}
               />
 
               <Champ label="Commentaire">
@@ -967,10 +1005,12 @@ export function TravailChambres() {
                 <input type="date" value={modalDateLimite} onChange={(event) => setModalDateLimite(event.target.value)} className={inputClass} />
               </Champ>
               <Champ label="Executant">
-                <select value={modalExecutant} onChange={(event) => setModalExecutant(event.target.value)} className={inputClass}>
-                  <option value="">Non affecte</option>
-                  {executantsModalDisponibles.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
-                </select>
+                <MultiSelectExecutants
+                  executants={executantsModalDisponibles}
+                  selection={modalExecutants}
+                  onChange={setModalExecutants}
+                  placeholder="Non affecte"
+                />
               </Champ>
               <Champ label="Etat">
                 <select value={modalEtat} onChange={(event) => setModalEtat(event.target.value)} className={inputClass}>
@@ -987,7 +1027,7 @@ export function TravailChambres() {
             <AlerteAffectation
               validation={validationModal}
               suggestions={suggestionsModal}
-              onChoisir={(executantId) => setModalExecutant(executantId)}
+              onChoisir={(executantId) => setModalExecutants([executantId])}
             />
 
             <div className="mt-3">
@@ -1013,6 +1053,56 @@ export function TravailChambres() {
 
 function Champ({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>{children}</label>
+}
+
+function MultiSelectExecutants({
+  executants,
+  selection,
+  onChange,
+  placeholder,
+}: {
+  executants: Executant[]
+  selection: string[]
+  onChange: (selection: string[]) => void
+  placeholder: string
+}) {
+  function basculer(id: string, coche: boolean) {
+    onChange(coche ? Array.from(new Set([...selection, id])) : selection.filter((item) => item !== id))
+  }
+
+  return (
+    <div className="rounded-md border border-slate-300 bg-white p-2">
+      {selection.length === 0 && <p className="px-1 pb-2 text-xs text-slate-500">{placeholder}</p>}
+      <div className="max-h-36 space-y-1 overflow-y-auto">
+        {executants.map((executant) => (
+          <label key={executant.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+            <input
+              type="checkbox"
+              checked={selection.includes(executant.id)}
+              onChange={(event) => basculer(executant.id, event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+            />
+            <span className="truncate">{executant.nom}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function executantsItemPlanning(item: ItemPlanningTravail) {
+  const executantsLies = item.executants.map((liaison) => liaison.executant).filter(Boolean) as Executant[]
+  if (executantsLies.length > 0) return executantsLies
+  return item.executant ? [item.executant] : []
+}
+
+function libelleExecutantsItem(item: ItemPlanningTravail) {
+  const noms = executantsItemPlanning(item).map((executant) => executant.nom)
+  return noms.length > 0 ? noms.join(', ') : 'Non affecte'
+}
+
+function formatPoints(points: number) {
+  return Number.isInteger(points) ? String(points) : points.toFixed(1)
 }
 
 function AlerteAffectation({

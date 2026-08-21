@@ -4,6 +4,8 @@ import { toast } from 'sonner'
 import { listerExecutants, type Executant } from '../api/executants'
 import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
 import {
+  idsExecutantsPlanningChambre,
+  libelleExecutantsPlanningChambre,
   listerPlanningChambre,
   listerTypesMouvement,
   type PlanningChambre,
@@ -66,11 +68,11 @@ export function HistoriquePlanningChambres() {
     return planning
       .filter((mouvement) => chambreFiltre === 'tous' || mouvement.id_lieu === chambreFiltre)
       .filter((mouvement) => batimentFiltre === 'tous' || mouvement.lieu?.id_batiment === batimentFiltre)
-      .filter((mouvement) => executantFiltre === 'tous' || mouvement.id_executant === executantFiltre)
+      .filter((mouvement) => executantFiltre === 'tous' || idsExecutantsPlanningChambre(mouvement).includes(executantFiltre))
       .filter((mouvement) => typeFiltre === 'tous' || mouvement.id_type_mouvement === typeFiltre)
       .filter((mouvement) => {
         if (!terme) return true
-        return [mouvement.lieu?.nom, mouvement.lieu?.numero, mouvement.lieu?.batiment?.nom, mouvement.executant?.nom, mouvement.type_mouvement?.nom]
+        return [mouvement.lieu?.nom, mouvement.lieu?.numero, mouvement.lieu?.batiment?.nom, libelleExecutantsPlanningChambre(mouvement), mouvement.type_mouvement?.nom]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
@@ -234,7 +236,7 @@ export function HistoriquePlanningChambres() {
                                   {mouvements.map((mouvement) => (
                                     <div key={mouvement.id} className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
                                       <BadgeMouvement couleur={mouvement.type_mouvement?.couleur}>{mouvement.type_mouvement?.nom || '-'}</BadgeMouvement>
-                                      <p className="mt-2 truncate text-xs font-medium text-slate-700">{mouvement.executant?.nom || 'Non affecte'}</p>
+                                      <p className="mt-2 truncate text-xs font-medium text-slate-700">{libelleExecutantsPlanningChambre(mouvement)}</p>
                                     </div>
                                   ))}
                                 </div>

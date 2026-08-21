@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { AlertTriangle, CalendarDays, Clock, History, RefreshCcw, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { listerEtatsMouvement, type EtatMouvement } from '../api/planningChambre'
-import type { TacheChambre } from '../api/tachesChambres'
+import { idsExecutantsTacheChambre, libelleExecutantsTacheChambre, type TacheChambre } from '../api/tachesChambres'
 import {
   changerEtatTacheChambre,
   listerHistoriqueEtatTacheChambre,
@@ -60,7 +60,10 @@ export function SuiviOperational() {
     [taches],
   )
   const executants = useMemo(
-    () => Array.from(new Map(taches.filter((tache) => tache.executant).map((tache) => [tache.executant!.id, tache.executant!])).values()).sort((a, b) => a.nom.localeCompare(b.nom)),
+    () => Array.from(new Map(taches.flatMap((tache) => {
+      const executantsTache = tache.executants?.map((liaison) => liaison.executant).filter(Boolean) || []
+      return (executantsTache.length > 0 ? executantsTache : tache.executant ? [tache.executant] : []).map((executant) => [executant!.id, executant!] as const)
+    })).values()).sort((a, b) => a.nom.localeCompare(b.nom)),
     [taches],
   )
   const types = useMemo(
@@ -72,7 +75,7 @@ export function SuiviOperational() {
 
     return taches.filter((tache) => {
       if (batimentFiltre !== 'tous' && tache.lieu?.id_batiment !== batimentFiltre) return false
-      if (executantFiltre !== 'tous' && tache.id_executant !== executantFiltre) return false
+      if (executantFiltre !== 'tous' && !idsExecutantsTacheChambre(tache).includes(executantFiltre)) return false
       if (etatFiltre !== 'tous' && tache.id_etat !== etatFiltre) return false
       if (typeFiltre !== 'tous' && tache.id_type_mouvement !== typeFiltre) return false
       if (!terme) return true
@@ -80,7 +83,7 @@ export function SuiviOperational() {
       return [
         tache.lieu?.nom,
         tache.lieu?.numero,
-        tache.executant?.nom,
+        libelleExecutantsTacheChambre(tache),
         tache.type_mouvement?.nom,
         tache.etat?.nom,
       ].filter(Boolean).join(' ').toLowerCase().includes(terme)
@@ -234,7 +237,7 @@ export function SuiviOperational() {
                       {tache.type_mouvement?.nom || '-'} ({tache.points} pts)
                     </BadgeMouvement>
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{tache.executant?.nom || 'Non affecte'}</td>
+                  <td className="px-4 py-3 text-slate-700">{libelleExecutantsTacheChambre(tache)}</td>
                   <td className="px-4 py-3">
                     <span className={`rounded-md px-2 py-1 text-xs font-semibold ring-1 ${couleursEtat[tache.etat?.nom || ''] || 'bg-slate-100 text-slate-700 ring-slate-200'}`}>
                       {tache.etat?.nom.replace('_', ' ')}
@@ -408,24 +411,30 @@ function calculerChargesExecutants(taches: TacheChambre[]) {
   const map = new Map<string, { id: string; nom: string; points: number; capaciteMax: number | null; totalTaches: number; bloques: number; parEtat: Record<string, number> }>()
 
   taches.forEach((tache) => {
-    if (!tache.executant) return
+    const executantsTache = tache.executants?.map((liaison) => liaison.executant).filter(Boolean) || []
+    const executants = executantsTache.length > 0 ? executantsTache : tache.executant ? [tache.executant] : []
+    if (executants.length === 0) return
 
-    const charge = map.get(tache.executant.id) || {
-      id: tache.executant.id,
-      nom: tache.executant.nom,
-      points: 0,
-      capaciteMax: tache.executant.domaine?.capacite_max ?? null,
-      totalTaches: 0,
-      bloques: 0,
-      parEtat: {},
-    }
     const etat = tache.etat?.nom || 'AFFECTE'
+    const pointsPartages = (tache.points || 0) / executants.length
 
-    charge.points += tache.points || 0
-    charge.totalTaches += 1
-    charge.parEtat[etat] = (charge.parEtat[etat] || 0) + 1
-    if (etat === 'BLOQUE') charge.bloques += 1
-    map.set(tache.executant.id, charge)
+    executants.forEach((executant) => {
+      const charge = map.get(executant!.id) || {
+        id: executant!.id,
+        nom: executant!.nom,
+        points: 0,
+        capaciteMax: executant!.domaine?.capacite_max ?? null,
+        totalTaches: 0,
+        bloques: 0,
+        parEtat: {},
+      }
+
+      charge.points += pointsPartages
+      charge.totalTaches += 1
+      charge.parEtat[etat] = (charge.parEtat[etat] || 0) + 1
+      if (etat === 'BLOQUE') charge.bloques += 1
+      map.set(executant!.id, charge)
+    })
   })
 
   return Array.from(map.values())

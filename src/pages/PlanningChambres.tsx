@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'reac
 import { AlertTriangle, BedDouble, CalendarDays, ChevronLeft, ChevronRight, Maximize2, Minimize2, Save, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Lieu } from '../api/lieux'
-import type { ChargeExecutant, PlanningChambre, PlanningChambrePayload } from '../api/planningChambre'
+import { idsExecutantsPlanningChambre, libelleExecutantsPlanningChambre, type ChargeExecutant, type PlanningChambre, type PlanningChambrePayload } from '../api/planningChambre'
 import { useAuth } from '../hooks/useAuth'
 import { type SuggestionAffectation, usePlanningChambre } from '../hooks/usePlanningChambre'
 
@@ -29,7 +29,7 @@ export function PlanningChambres() {
   const [dateDebutSejour, setDateDebutSejour] = useState(formatDateInput(new Date()))
   const [dateFinSejour, setDateFinSejour] = useState(formatDateInput(new Date()))
   const [typeLot, setTypeLot] = useState('')
-  const [executantLot, setExecutantLot] = useState('')
+  const [executantsLot, setExecutantsLot] = useState<string[]>([])
   const [remplacer, setRemplacer] = useState(false)
   const [modeSaisie, setModeSaisie] = useState<ModeSaisie>('mouvement')
   const [suggestions, setSuggestions] = useState<SuggestionAffectation[]>([])
@@ -37,7 +37,7 @@ export function PlanningChambres() {
   const [reaffectationsEnAttente, setReaffectationsEnAttente] = useState<ReaffectationEnAttente[]>([])
   const [modal, setModal] = useState<ModalCellule | null>(null)
   const [typeModal, setTypeModal] = useState('')
-  const [executantModal, setExecutantModal] = useState('')
+  const [executantsModal, setExecutantsModal] = useState<string[]>([])
   const [mouvementEdition, setMouvementEdition] = useState<PlanningChambre | null>(null)
   const [soumission, setSoumission] = useState(false)
   const [pagePlanning, setPagePlanning] = useState(1)
@@ -117,7 +117,7 @@ export function PlanningChambres() {
   }, [planning])
   const propositionsEnAttente = payloadsEnAttente.length > 0 || reaffectationsEnAttente.length > 0
   const payloadsProposition = payloadsEnAttente.length > 0 ? payloadsEnAttente : reaffectationsEnAttente.map((item) => item.payload)
-  const reaffectationsSelectionnees = reaffectationsEnAttente.filter((item) => item.payload.id_executant !== item.mouvement.id_executant)
+  const reaffectationsSelectionnees = reaffectationsEnAttente.filter((item) => (item.payload.id_executants?.[0] || item.payload.id_executant) !== item.mouvement.id_executant)
   const peutValiderPropositions = payloadsEnAttente.length > 0 || reaffectationsSelectionnees.length > 0
   const totalPagesPlanning = Math.max(1, Math.ceil(chambresFiltrees.length / lignesParPage))
   const chambresPage = useMemo(() => {
@@ -163,7 +163,7 @@ export function PlanningChambres() {
     return chambresSelectionnees
       .map((idChambre) => chambres.find((chambre) => chambre.id === idChambre))
       .filter(Boolean)
-      .map((chambre) => mouvementPayload(chambre!, dateLot, typeLot, executantLot || undefined))
+      .map((chambre) => mouvementPayload(chambre!, dateLot, typeLot, executantsLot))
   }
 
   function construirePayloadsSejour() {
@@ -186,15 +186,15 @@ export function PlanningChambres() {
           const payloads: PlanningChambrePayload[] = []
 
           if (date === dateDebutSejour) {
-            payloads.push(mouvementPayload(chambre!, date, typeArrivee.id, executantLot || undefined))
+            payloads.push(mouvementPayload(chambre!, date, typeArrivee.id, executantsLot))
           }
 
           if (date > dateDebutSejour && date < dateFinSejour) {
-            payloads.push(mouvementPayload(chambre!, date, typeRecouche.id, executantLot || undefined))
+            payloads.push(mouvementPayload(chambre!, date, typeRecouche.id, executantsLot))
           }
 
           if (date === dateFinSejour) {
-            payloads.push(mouvementPayload(chambre!, date, typeDepart.id, executantLot || undefined))
+            payloads.push(mouvementPayload(chambre!, date, typeDepart.id, executantsLot))
           }
 
           return payloads
@@ -275,12 +275,12 @@ export function PlanningChambres() {
   function appliquerSuggestion(payload: PlanningChambrePayload, idExecutant: string) {
     const payloads = payloadsEnAttente.map((item) =>
       item.id_lieu === payload.id_lieu && item.date === payload.date && item.id_type_mouvement === payload.id_type_mouvement
-        ? { ...item, id_executant: idExecutant }
+        ? { ...item, id_executant: idExecutant, id_executants: [idExecutant] }
         : item,
     )
     const reaffectations = reaffectationsEnAttente.map((item) =>
       item.payload.id_lieu === payload.id_lieu && item.payload.date === payload.date && item.payload.id_type_mouvement === payload.id_type_mouvement
-        ? { ...item, payload: { ...item.payload, id_executant: idExecutant } }
+        ? { ...item, payload: { ...item.payload, id_executant: idExecutant, id_executants: [idExecutant] } }
         : item,
     )
     setPayloadsEnAttente(payloads)
@@ -299,7 +299,7 @@ export function PlanningChambres() {
   }
 
   async function validerPropositions() {
-    const reaffectationsSelectionnees = reaffectationsEnAttente.filter((item) => item.payload.id_executant !== item.mouvement.id_executant)
+    const reaffectationsSelectionnees = reaffectationsEnAttente.filter((item) => (item.payload.id_executants?.[0] || item.payload.id_executant) !== item.mouvement.id_executant)
 
     if (reaffectationsSelectionnees.length > 0) {
       setSoumission(true)
@@ -328,7 +328,7 @@ export function PlanningChambres() {
 
   function proposerReaffectation(chargeIdExecutant: string, date: string) {
     const mouvements = planning
-      .filter((mouvement) => mouvement.id_executant === chargeIdExecutant)
+      .filter((mouvement) => idsExecutantsPlanningChambre(mouvement).includes(chargeIdExecutant))
       .filter((mouvement) => mouvement.date === date)
       .filter((mouvement) => mouvement.etat?.nom === 'AFFECTE')
 
@@ -344,6 +344,7 @@ export function PlanningChambres() {
         date: mouvement.date,
         id_type_mouvement: mouvement.id_type_mouvement,
         id_executant: mouvement.id_executant,
+        id_executants: idsExecutantsPlanningChambre(mouvement),
         id_etat: mouvement.id_etat,
       },
     }))
@@ -366,9 +367,10 @@ export function PlanningChambres() {
     }
   }
 
-  function nomExecutant(idExecutant: string | null) {
-    if (!idExecutant) return 'Non affecte'
-    return executants.find((executant) => executant.id === idExecutant)?.nom || 'Executant'
+  function nomExecutantsPayload(payload: PlanningChambrePayload) {
+    const ids = payload.id_executants?.length ? payload.id_executants : payload.id_executant ? [payload.id_executant] : []
+    if (ids.length === 0) return 'Non affecte'
+    return ids.map((id) => executants.find((executant) => executant.id === id)?.nom || 'Executant').join(', ')
   }
 
   function executantsDisponiblesPourDate(date: string, idCourant?: string | null) {
@@ -393,7 +395,7 @@ export function PlanningChambres() {
     setModal({ chambre, date, mouvements })
     setMouvementEdition(premier)
     setTypeModal(premier?.id_type_mouvement || typesMouvement[0]?.id || '')
-    setExecutantModal(premier?.id_executant || executantDefautPourLieu(chambre) || '')
+    setExecutantsModal(premier ? idsExecutantsPlanningChambre(premier) : [executantDefautPourLieu(chambre)].filter(Boolean) as string[])
   }
 
   async function enregistrerModal(event: React.FormEvent<HTMLFormElement>) {
@@ -405,7 +407,8 @@ export function PlanningChambres() {
       id_lieu: modal.chambre.id,
       date: modal.date,
       id_type_mouvement: typeModal,
-      id_executant: executantModal || null,
+      id_executant: executantsModal[0] || null,
+      id_executants: executantsModal,
       id_etat: mouvementEdition?.id_etat || etatAffecte?.id || etats[0]?.id || '',
     }
     try {
@@ -463,12 +466,12 @@ export function PlanningChambres() {
               </label>
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-700">Executant</span>
-                <select value={executantLot} onChange={(event) => setExecutantLot(event.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                  <option value="">Defaut chambre/batiment si en travail</option>
-                  {executantsLotDisponibles.map((executant) => (
-                    <option key={executant.id} value={executant.id}>{executant.nom}</option>
-                  ))}
-                </select>
+                <MultiSelectExecutants
+                  executants={executantsLotDisponibles}
+                  selection={executantsLot}
+                  onChange={setExecutantsLot}
+                  placeholder="Defaut chambre/batiment si en travail"
+                />
                 {executantsLotDisponibles.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun executant en travail pour cette date.</p>}
               </label>
               <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -514,7 +517,7 @@ export function PlanningChambres() {
                       {libellePayload(suggestion.payload).type} - {libellePayload(suggestion.payload).chambre}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {libellePayload(suggestion.payload).date} - actuellement affecte a {nomExecutant(suggestion.payload.id_executant)}
+                      {libellePayload(suggestion.payload).date} - actuellement affecte a {nomExecutantsPayload(suggestion.payload)}
                     </p>
                     <p className="mt-2 text-xs font-semibold text-amber-800">
                       {suggestion.chargeActuelle?.executant.nom} depasse sa capacite. Proposer ce mouvement a :
@@ -542,7 +545,7 @@ export function PlanningChambres() {
                     return (
                       <div key={`${payload.id_lieu}-${payload.date}-${payload.id_type_mouvement}`} className="rounded-md bg-white p-3 text-sm">
                         <p className="font-semibold text-slate-900">{libelle.type} - {libelle.chambre}</p>
-                        <p className="text-xs text-slate-500">{libelle.date} - pret a enregistrer avec {nomExecutant(payload.id_executant)}</p>
+                        <p className="text-xs text-slate-500">{libelle.date} - pret a enregistrer avec {nomExecutantsPayload(payload)}</p>
                       </div>
                     )
                   })}
@@ -729,10 +732,12 @@ export function PlanningChambres() {
 
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-700">Executant</span>
-                <select value={executantLot} onChange={(event) => setExecutantLot(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                  <option value="">Defaut chambre/batiment si en travail</option>
-                  {executantsLotDisponibles.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
-                </select>
+                <MultiSelectExecutants
+                  executants={executantsLotDisponibles}
+                  selection={executantsLot}
+                  onChange={setExecutantsLot}
+                  placeholder="Defaut chambre/batiment si en travail"
+                />
                 {executantsLotDisponibles.length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun executant en travail pour la date de reference.</p>}
               </label>
               <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -792,7 +797,7 @@ export function PlanningChambres() {
                       <p className="font-semibold text-slate-950">{libelle.chambre}</p>
                       <p className="text-sm text-slate-600">{libelle.type} - {libelle.date}</p>
                     </div>
-                    <span className="rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">Actuel : {nomExecutant(suggestion.payload.id_executant)}</span>
+                    <span className="rounded-md bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">Actuel : {nomExecutantsPayload(suggestion.payload)}</span>
                   </div>
                   {suggestion.chargeActuelle && (
                     <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
@@ -817,7 +822,7 @@ export function PlanningChambres() {
                 <div key={`${payload.id_lieu}-${payload.date}-${payload.id_type_mouvement}`} className="rounded-lg bg-white p-4 shadow-sm">
                   <p className="font-semibold text-slate-950">{libelle.chambre}</p>
                   <p className="text-sm text-slate-600">{libelle.type} - {libelle.date}</p>
-                  <p className="mt-2 text-xs font-semibold text-teal-700">Pret avec {nomExecutant(payload.id_executant)}</p>
+                  <p className="mt-2 text-xs font-semibold text-teal-700">Pret avec {nomExecutantsPayload(payload)}</p>
                 </div>
               )
             })}
@@ -837,8 +842,8 @@ export function PlanningChambres() {
             {modal.mouvements.length > 0 && (
               <div className="mt-4 space-y-2">
                 {modal.mouvements.map((mouvement) => (
-                  <button key={mouvement.id} type="button" onClick={() => { setMouvementEdition(mouvement); setTypeModal(mouvement.id_type_mouvement); setExecutantModal(mouvement.id_executant || '') }} className={mouvementEdition?.id === mouvement.id ? 'w-full rounded-md border border-teal-300 bg-teal-50 p-2 text-left text-sm' : 'w-full rounded-md border border-slate-200 p-2 text-left text-sm'}>
-                    {mouvement.type_mouvement?.nom} - {mouvement.executant?.nom || 'Non affecte'}
+                  <button key={mouvement.id} type="button" onClick={() => { setMouvementEdition(mouvement); setTypeModal(mouvement.id_type_mouvement); setExecutantsModal(idsExecutantsPlanningChambre(mouvement)) }} className={mouvementEdition?.id === mouvement.id ? 'w-full rounded-md border border-teal-300 bg-teal-50 p-2 text-left text-sm' : 'w-full rounded-md border border-slate-200 p-2 text-left text-sm'}>
+                    {mouvement.type_mouvement?.nom} - {libelleExecutantsPlanningChambre(mouvement)}
                   </button>
                 ))}
               </div>
@@ -851,10 +856,12 @@ export function PlanningChambres() {
             </label>
             <label className="mt-3 block">
               <span className="mb-1 block text-sm font-medium text-slate-700">Executant</span>
-              <select value={executantModal} onChange={(event) => setExecutantModal(event.target.value)} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
-                <option value="">Non affecte</option>
-                {executantsDisponiblesPourDate(modal.date, mouvementEdition?.id_executant).map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
-              </select>
+              <MultiSelectExecutants
+                executants={executantsDisponiblesPourDate(modal.date, mouvementEdition?.id_executant)}
+                selection={executantsModal}
+                onChange={setExecutantsModal}
+                placeholder="Non affecte"
+              />
               {executantsEnTravail(modal.date).length === 0 && <p className="mt-1 text-xs text-amber-700">Aucun executant en travail pour cette date.</p>}
             </label>
             <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -879,9 +886,44 @@ function CellMouvements({ mouvements }: { mouvements: PlanningChambre[] }) {
           style={styleMouvement(mouvement.type_mouvement?.couleur)}
         >
           <p className="text-xs font-semibold">{mouvement.type_mouvement?.nom} ({mouvement.type_mouvement?.points} pts)</p>
-          <p className="truncate text-xs opacity-80">{mouvement.executant?.nom || 'Non affecte'}</p>
+          <p className="truncate text-xs opacity-80">{libelleExecutantsPlanningChambre(mouvement)}</p>
         </div>
       ))}
+    </div>
+  )
+}
+
+function MultiSelectExecutants({
+  executants,
+  selection,
+  onChange,
+  placeholder,
+}: {
+  executants: Executant[]
+  selection: string[]
+  onChange: (selection: string[]) => void
+  placeholder: string
+}) {
+  function basculer(id: string, coche: boolean) {
+    onChange(coche ? Array.from(new Set([...selection, id])) : selection.filter((item) => item !== id))
+  }
+
+  return (
+    <div className="rounded-md border border-slate-300 bg-white p-2">
+      {selection.length === 0 && <p className="px-1 pb-2 text-xs text-slate-500">{placeholder}</p>}
+      <div className="max-h-36 space-y-1 overflow-y-auto">
+        {executants.map((executant) => (
+          <label key={executant.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+            <input
+              type="checkbox"
+              checked={selection.includes(executant.id)}
+              onChange={(event) => basculer(executant.id, event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+            />
+            <span className="truncate">{executant.nom}</span>
+          </label>
+        ))}
+      </div>
     </div>
   )
 }

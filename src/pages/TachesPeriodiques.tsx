@@ -43,6 +43,8 @@ export function TachesPeriodiques() {
   const [idPlanningAAttribuer, setIdPlanningAAttribuer] = useState<string | null>(null)
   const [idsTachesSelectionnees, setIdsTachesSelectionnees] = useState<string[]>([])
   const [idExecutantAttributionLot, setIdExecutantAttributionLot] = useState('')
+  const [idsTachesAvenirSelectionnees, setIdsTachesAvenirSelectionnees] = useState<string[]>([])
+  const [idExecutantAttributionAvenir, setIdExecutantAttributionAvenir] = useState('')
   const { estAdmin } = useAuth()
   const {
     taches,
@@ -83,6 +85,7 @@ export function TachesPeriodiques() {
     () => planningTrie.filter((item) => item.est_actif && !item.date_realisation && item.date_echeance > aujourdHui),
     [aujourdHui, planningTrie],
   )
+  const toutesTachesAvenirSelectionnees = planningAvenir.length > 0 && planningAvenir.every((item) => idsTachesAvenirSelectionnees.includes(item.id))
   const propositionsAffichees = useMemo(
     () => idPlanningAAttribuer ? propositions.filter((proposition) => proposition.planning.id === idPlanningAAttribuer) : propositions,
     [idPlanningAAttribuer, propositions],
@@ -92,6 +95,11 @@ export function TachesPeriodiques() {
     const idsVisibles = new Set(planningSuivi.map((item) => item.id))
     setIdsTachesSelectionnees((selection) => selection.filter((id) => idsVisibles.has(id)))
   }, [planningSuivi])
+
+  useEffect(() => {
+    const idsVisibles = new Set(planningAvenir.map((item) => item.id))
+    setIdsTachesAvenirSelectionnees((selection) => selection.filter((id) => idsVisibles.has(id)))
+  }, [planningAvenir])
 
   function demarrerEdition(tache: TachePeriodique) {
     setEdition(tache)
@@ -250,6 +258,14 @@ export function TachesPeriodiques() {
     setIdsTachesSelectionnees(coche ? planningSuivi.map((item) => item.id) : [])
   }
 
+  function basculerTacheAvenir(id: string, coche: boolean) {
+    setIdsTachesAvenirSelectionnees((selection) => coche ? Array.from(new Set([...selection, id])) : selection.filter((item) => item !== id))
+  }
+
+  function selectionnerToutesTachesAvenir(coche: boolean) {
+    setIdsTachesAvenirSelectionnees(coche ? planningAvenir.map((item) => item.id) : [])
+  }
+
   async function attribuerSelection() {
     const etatAFaire = etats.find((etat) => etat.nom === 'A_FAIRE')
 
@@ -277,6 +293,41 @@ export function TachesPeriodiques() {
       toast.success(`${idsTachesSelectionnees.length} tache(s) attribuee(s).`)
       setIdsTachesSelectionnees([])
       setIdExecutantAttributionLot('')
+      await charger()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Attribution impossible.')
+    } finally {
+      setSoumission(false)
+    }
+  }
+
+  async function attribuerSelectionAvenir() {
+    const etatAFaire = etats.find((etat) => etat.nom === 'A_FAIRE')
+
+    if (idsTachesAvenirSelectionnees.length === 0) {
+      toast.error('Selectionnez au moins une tache a venir.')
+      return
+    }
+
+    if (!idExecutantAttributionAvenir) {
+      toast.error('Choisissez un executant.')
+      return
+    }
+
+    if (!etatAFaire) {
+      toast.error("L'etat A_FAIRE est introuvable.")
+      return
+    }
+
+    setSoumission(true)
+    try {
+      await Promise.all(idsTachesAvenirSelectionnees.map((id) => modifierPlanningTachePeriodique(id, {
+        id_executant: idExecutantAttributionAvenir,
+        id_etat: etatAFaire.id,
+      })))
+      toast.success(`${idsTachesAvenirSelectionnees.length} tache(s) a venir attribuee(s).`)
+      setIdsTachesAvenirSelectionnees([])
+      setIdExecutantAttributionAvenir('')
       await charger()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Attribution impossible.')
@@ -534,15 +585,48 @@ export function TachesPeriodiques() {
             <h2 className="font-semibold text-slate-950">Prochaines echeances</h2>
             <p className="mt-1 text-sm text-slate-500">Taches a preparer pour les jours a venir.</p>
           </div>
+          {idsTachesAvenirSelectionnees.length > 0 && (
+            <div className="flex flex-col gap-3 border-b border-teal-100 bg-teal-50 p-4 lg:flex-row lg:items-center lg:justify-between">
+              <p className="text-sm font-semibold text-teal-900">{idsTachesAvenirSelectionnees.length} tache(s) a venir selectionnee(s)</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select value={idExecutantAttributionAvenir} onChange={(e) => setIdExecutantAttributionAvenir(e.target.value)} className={inputClass}>
+                  <option value="">Choisir un executant</option>
+                  {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
+                </select>
+                <button type="button" disabled={soumission || !idExecutantAttributionAvenir} onClick={() => void attribuerSelectionAvenir()} className="h-10 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white disabled:opacity-60">Attribuer</button>
+                <button type="button" onClick={() => { setIdsTachesAvenirSelectionnees([]); setIdExecutantAttributionAvenir('') }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">Annuler</button>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50"><tr><Th>Tache</Th><Th>Lieu</Th><Th>Echeance</Th><Th>Classification</Th><Th>Etat</Th><Th>Executant</Th></tr></thead>
+              <thead className="bg-slate-50">
+                <tr>
+                  <Th>
+                    <input
+                      type="checkbox"
+                      checked={toutesTachesAvenirSelectionnees}
+                      onChange={(e) => selectionnerToutesTachesAvenir(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                    />
+                  </Th>
+                  <Th>Tache</Th><Th>Lieu</Th><Th>Echeance</Th><Th>Classification</Th><Th>Etat</Th><Th>Executant</Th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-slate-200">
-                {planningAvenir.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Aucune tache a venir.</td></tr>}
+                {planningAvenir.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Aucune tache a venir.</td></tr>}
                 {planningAvenir.map((item) => {
                   const classification = classifications.get(item.id)
                   return (
                     <tr key={item.id}>
+                      <Td>
+                        <input
+                          type="checkbox"
+                          checked={idsTachesAvenirSelectionnees.includes(item.id)}
+                          onChange={(e) => basculerTacheAvenir(item.id, e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                        />
+                      </Td>
                       <Td><p className="font-semibold text-slate-900">{item.tache?.nom}</p><p className="text-xs text-slate-500">{item.tache?.nature} - {item.tache?.points_estimes} pts</p></Td>
                       <Td>{item.lieu?.nom}</Td>
                       <Td>{formatDateCourte(item.date_echeance)}{item.est_reportee && <p className="text-xs text-amber-700">Reportee</p>}</Td>

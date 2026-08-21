@@ -28,6 +28,7 @@ export type PlanningChambre = {
   type_mouvement?: TypeMouvement | null
   etat?: EtatMouvement | null
   executant?: Executant | null
+  executants?: Array<{ id: string; id_executant: string; executant?: Executant | null }>
 }
 
 export type PlanningChambrePayload = {
@@ -35,6 +36,7 @@ export type PlanningChambrePayload = {
   date: string
   id_type_mouvement: string
   id_executant: string | null
+  id_executants?: string[]
   id_etat: string
 }
 
@@ -80,7 +82,7 @@ export type ConflitPlanningChambre = {
 const selectTypeMouvement = 'id,nom,points,couleur'
 const selectEtatMouvement = 'id,nom'
 const selectPlanningChambre =
-  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
+  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),executants:planning_chambre_executant(id,id_executant,executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)))'
 const selectTemplate =
   'id,nom,description'
 const selectTemplateItem =
@@ -167,26 +169,28 @@ export async function trouverMouvementsChambre(idLieu: string, date: string) {
 }
 
 export async function creerMouvementChambre(payload: PlanningChambrePayload) {
+  const { id_executants, ...payloadBase } = normaliserPayloadPlanningChambre(payload)
   const { data, error } = await supabase
     .from('planning_chambre')
-    .insert(payload)
+    .insert(payloadBase)
     .select(selectPlanningChambre)
     .single<PlanningChambre>()
 
   if (error) throw error
-  return data
+  return remplacerExecutantsPlanningChambre(data, id_executants)
 }
 
 export async function modifierMouvementChambre(id: string, payload: PlanningChambrePayload) {
+  const { id_executants, ...payloadBase } = normaliserPayloadPlanningChambre(payload)
   const { data, error } = await supabase
     .from('planning_chambre')
-    .update(payload)
+    .update(payloadBase)
     .eq('id', id)
     .select(selectPlanningChambre)
     .single<PlanningChambre>()
 
   if (error) throw error
-  return data
+  return remplacerExecutantsPlanningChambre(data, id_executants)
 }
 
 export async function supprimerMouvementChambre(id: string) {
@@ -235,14 +239,17 @@ export async function appliquerMouvementsLot(payloads: PlanningChambrePayload[],
   }
 
   if (remplacer) {
+    const payloadsNormalises = payloads.map(normaliserPayloadPlanningChambre)
+    const payloadsBase = payloadsNormalises.map(({ id_executants: _idExecutants, ...payload }) => payload)
     const { data, error } = await supabase
       .from('planning_chambre')
-      .upsert(payloads, { onConflict: 'id_lieu,date,id_type_mouvement' })
+      .upsert(payloadsBase, { onConflict: 'id_lieu,date,id_type_mouvement' })
       .select(selectPlanningChambre)
       .returns<PlanningChambre[]>()
 
     if (error) throw error
-    return { sauvegardes: data, conflits: [] as ConflitPlanningChambre[] }
+    const sauvegardes = await remplacerExecutantsPlanningChambreLot(data, payloadsNormalises)
+    return { sauvegardes, conflits: [] as ConflitPlanningChambre[] }
   }
 
   const conflits = await verifierConflitsPlanningChambre(payloads)
@@ -259,14 +266,17 @@ export async function appliquerMouvementsLot(payloads: PlanningChambrePayload[],
     return { sauvegardes: [] as PlanningChambre[], conflits }
   }
 
+  const payloadsNormalises = aCreer.map(normaliserPayloadPlanningChambre)
+  const payloadsBase = payloadsNormalises.map(({ id_executants: _idExecutants, ...payload }) => payload)
   const { data, error } = await supabase
     .from('planning_chambre')
-    .insert(aCreer)
+    .insert(payloadsBase)
     .select(selectPlanningChambre)
     .returns<PlanningChambre[]>()
 
   if (error) throw error
-  return { sauvegardes: data, conflits }
+  const sauvegardes = await remplacerExecutantsPlanningChambreLot(data, payloadsNormalises)
+  return { sauvegardes, conflits }
 }
 
 export async function listerTemplatesPlanningChambre() {
@@ -333,8 +343,6 @@ export function calculerCharges(
   historiqueTaches: TachePeriodiqueHistorique[] = [],
 ) {
   return executants.map<ChargeExecutant>((executant) => {
-    const mouvementsExecutant = planning
-      .filter((mouvement) => mouvement.id_executant === executant.id)
     const tachesExecutant = planningTaches
       .filter((tache) => tache.id_executant === executant.id && tache.est_actif && !tache.date_realisation && tache.etat?.nom !== 'ANNULEE')
     const tachesRealiseesExecutant = historiqueTaches
@@ -342,8 +350,12 @@ export function calculerCharges(
     const capaciteMax = executant.domaine?.capacite_max ?? null
     const pointsParDateMap = new Map<string, number>()
 
-    mouvementsExecutant.forEach((mouvement) => {
-      pointsParDateMap.set(mouvement.date, (pointsParDateMap.get(mouvement.date) || 0) + (mouvement.type_mouvement?.points || 0))
+    planning.forEach((mouvement) => {
+      const ids = idsExecutantsPlanningChambre(mouvement)
+      if (!ids.includes(executant.id)) return
+
+      const pointsPartages = (mouvement.type_mouvement?.points || 0) / Math.max(ids.length, 1)
+      pointsParDateMap.set(mouvement.date, (pointsParDateMap.get(mouvement.date) || 0) + pointsPartages)
     })
 
     tachesExecutant.forEach((tache) => {
@@ -384,5 +396,92 @@ export function calculerCharges(
 
 export function cleMouvement(idLieu: string, date: string, idTypeMouvement: string) {
   return `${idLieu}-${date}-${idTypeMouvement}`
+}
+
+export function idsExecutantsPlanningChambre(mouvement: Pick<PlanningChambre, 'id_executant' | 'executants'>) {
+  const idsLiaison = mouvement.executants?.map((item) => item.id_executant).filter(Boolean) || []
+  if (idsLiaison.length > 0) return Array.from(new Set(idsLiaison))
+  return mouvement.id_executant ? [mouvement.id_executant] : []
+}
+
+export function libelleExecutantsPlanningChambre(mouvement: Pick<PlanningChambre, 'executant' | 'executants'>) {
+  const noms = mouvement.executants?.map((item) => item.executant?.nom).filter(Boolean) || []
+  if (noms.length > 0) return noms.join(', ')
+  return mouvement.executant?.nom || 'Non affecte'
+}
+
+function normaliserPayloadPlanningChambre(payload: PlanningChambrePayload) {
+  const idExecutants = Array.from(new Set(payload.id_executants ?? (payload.id_executant ? [payload.id_executant] : [])))
+  return {
+    ...payload,
+    id_executant: idExecutants[0] || null,
+    id_executants: idExecutants,
+  }
+}
+
+async function remplacerExecutantsPlanningChambre(mouvement: PlanningChambre, idExecutants?: string[]) {
+  if (!idExecutants) return mouvement
+
+  const { error: deleteError } = await supabase
+    .from('planning_chambre_executant')
+    .delete()
+    .eq('id_planning_chambre', mouvement.id)
+
+  if (deleteError) throw deleteError
+
+  if (idExecutants.length > 0) {
+    const { error: insertError } = await supabase
+      .from('planning_chambre_executant')
+      .insert(idExecutants.map((idExecutant) => ({ id_planning_chambre: mouvement.id, id_executant: idExecutant })))
+
+    if (insertError) throw insertError
+  }
+
+  await synchroniserTachesChambreDepuisPlanning(mouvement.id, idExecutants)
+
+  const { data, error } = await supabase
+    .from('planning_chambre')
+    .select(selectPlanningChambre)
+    .eq('id', mouvement.id)
+    .single<PlanningChambre>()
+
+  if (error) throw error
+  return data
+}
+
+async function remplacerExecutantsPlanningChambreLot(mouvements: PlanningChambre[], payloads: ReturnType<typeof normaliserPayloadPlanningChambre>[]) {
+  const payloadParCle = new Map(payloads.map((payload) => [cleMouvement(payload.id_lieu, payload.date, payload.id_type_mouvement), payload]))
+
+  return Promise.all(mouvements.map((mouvement) => {
+    const payload = payloadParCle.get(cleMouvement(mouvement.id_lieu, mouvement.date, mouvement.id_type_mouvement))
+    return remplacerExecutantsPlanningChambre(mouvement, payload?.id_executants)
+  }))
+}
+
+async function synchroniserTachesChambreDepuisPlanning(idPlanningChambre: string, idExecutants: string[]) {
+  const { data: taches, error } = await supabase
+    .from('tache_chambre')
+    .select('id')
+    .eq('id_planning_chambre', idPlanningChambre)
+    .returns<Array<{ id: string }>>()
+
+  if (error) throw error
+
+  await Promise.all(taches.map(async (tache) => {
+    const { error: deleteError } = await supabase
+      .from('tache_chambre_executant')
+      .delete()
+      .eq('id_tache_chambre', tache.id)
+
+    if (deleteError) throw deleteError
+
+    if (idExecutants.length === 0) return
+
+    const { error: insertError } = await supabase
+      .from('tache_chambre_executant')
+      .insert(idExecutants.map((idExecutant) => ({ id_tache_chambre: tache.id, id_executant: idExecutant })))
+
+    if (insertError) throw insertError
+  }))
 }
 

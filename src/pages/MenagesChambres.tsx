@@ -6,6 +6,8 @@ import { listerExecutants, type Executant } from '../api/executants'
 import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
 import {
   creerMouvementChambre,
+  idsExecutantsPlanningChambre,
+  libelleExecutantsPlanningChambre,
   listerEtatsMouvement,
   listerPlanningChambre,
   listerTypesMouvement,
@@ -41,7 +43,7 @@ export function MenagesChambres() {
   const [etats, setEtats] = useState<EtatMouvement[]>([])
   const [planning, setPlanning] = useState<PlanningChambre[]>([])
   const [selection, setSelection] = useState<string[]>([])
-  const [idExecutant, setIdExecutant] = useState('')
+  const [idsExecutants, setIdsExecutants] = useState<string[]>([])
   const [chargement, setChargement] = useState(true)
   const [soumission, setSoumission] = useState(false)
 
@@ -118,11 +120,11 @@ export function MenagesChambres() {
       .filter((mouvement) => mouvement.type_mouvement?.nom.toUpperCase() === 'MENAGE')
       .filter((mouvement) => chambreHistorique === 'tous' || mouvement.id_lieu === chambreHistorique)
       .filter((mouvement) => batimentHistorique === 'tous' || mouvement.lieu?.id_batiment === batimentHistorique)
-      .filter((mouvement) => executantHistorique === 'tous' || mouvement.id_executant === executantHistorique)
+      .filter((mouvement) => executantHistorique === 'tous' || idsExecutantsPlanningChambre(mouvement).includes(executantHistorique))
       .filter((mouvement) => etatHistorique === 'tous' || mouvement.etat?.nom === etatHistorique)
       .filter((mouvement) => {
         if (!terme) return true
-        return [mouvement.lieu?.nom, mouvement.lieu?.numero, mouvement.lieu?.batiment?.nom, mouvement.executant?.nom, mouvement.etat?.nom]
+        return [mouvement.lieu?.nom, mouvement.lieu?.numero, mouvement.lieu?.batiment?.nom, libelleExecutantsPlanningChambre(mouvement), mouvement.etat?.nom]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
@@ -172,8 +174,8 @@ export function MenagesChambres() {
       return
     }
 
-    if (!idExecutant) {
-      toast.error('Choisissez un executant chambre.')
+    if (idsExecutants.length === 0) {
+      toast.error('Choisissez au moins un executant chambre.')
       return
     }
 
@@ -200,7 +202,8 @@ export function MenagesChambres() {
           id_lieu: ligne.chambre.id,
           date: ligne.date,
           id_type_mouvement: typeMenage.id,
-          id_executant: idExecutant,
+          id_executant: idsExecutants[0] || null,
+          id_executants: idsExecutants,
           id_etat: etatAffecte.id,
         }),
       ))
@@ -254,10 +257,7 @@ export function MenagesChambres() {
                 <Recherche value={recherchePlanifier} onChange={setRecherchePlanifier} placeholder="Chambre, numero..." />
               </Champ>
               <Champ label="Executant">
-                <select value={idExecutant} onChange={(event) => setIdExecutant(event.target.value)} className={inputClass}>
-                  <option value="">Choisir</option>
-                  {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
-                </select>
+                <MultiSelectExecutants executants={executants} selection={idsExecutants} onChange={setIdsExecutants} placeholder="Choisir" />
               </Champ>
               <div className="flex items-end">
                 <button type="button" disabled={soumission || selection.length === 0} onClick={() => void creerMenages()} className={primaryButton}>
@@ -374,7 +374,7 @@ export function MenagesChambres() {
                       {groupe.mouvements.map((mouvement) => (
                         <tr key={mouvement.id} className="hover:bg-slate-50">
                           <td className="px-4 py-3 text-slate-700">{formatDate(mouvement.date)}</td>
-                          <td className="px-4 py-3 text-slate-700">{mouvement.executant?.nom || 'Non affecte'}</td>
+                          <td className="px-4 py-3 text-slate-700">{libelleExecutantsPlanningChambre(mouvement)}</td>
                           <td className="px-4 py-3"><Badge tone={couleurEtat(mouvement.etat?.nom)}>{mouvement.etat?.nom || '-'}</Badge></td>
                           <td className="px-4 py-3">
                             <BadgeMouvement couleur={mouvement.type_mouvement?.couleur}>
@@ -424,6 +424,41 @@ function Recherche({ value, onChange, placeholder }: { value: string; onChange: 
 
 function Champ({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>{children}</label>
+}
+
+function MultiSelectExecutants({
+  executants,
+  selection,
+  onChange,
+  placeholder,
+}: {
+  executants: Executant[]
+  selection: string[]
+  onChange: (selection: string[]) => void
+  placeholder: string
+}) {
+  function basculer(id: string, coche: boolean) {
+    onChange(coche ? Array.from(new Set([...selection, id])) : selection.filter((item) => item !== id))
+  }
+
+  return (
+    <div className="rounded-md border border-slate-300 bg-white p-2">
+      {selection.length === 0 && <p className="px-1 pb-2 text-xs text-slate-500">{placeholder}</p>}
+      <div className="max-h-36 space-y-1 overflow-y-auto">
+        {executants.map((executant) => (
+          <label key={executant.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+            <input
+              type="checkbox"
+              checked={selection.includes(executant.id)}
+              onChange={(event) => basculer(executant.id, event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+            />
+            <span className="truncate">{executant.nom}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function Badge({ tone, children }: { tone: 'red' | 'orange' | 'green' | 'slate'; children: React.ReactNode }) {
