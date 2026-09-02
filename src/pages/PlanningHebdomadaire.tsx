@@ -29,7 +29,7 @@ type ModalCellule = {
   planning: PlanningExecutant | null
 }
 
-const joursLabels = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
+const joursLabels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 const couleursFallback = ['#16a34a', '#2563eb', '#9333ea', '#dc2626', '#0891b2', '#ea580c', '#4f46e5']
 
 const formulaireInitial: FormulairePlanning = {
@@ -50,7 +50,7 @@ export function PlanningHebdomadaire() {
   const [formulaireModal, setFormulaireModal] = useState<FormulairePlanning>(formulaireInitial)
   const [executantsSelectionnes, setExecutantsSelectionnes] = useState<string[]>([])
   const [dateDebutLot, setDateDebutLot] = useState(dateReference)
-  const [dateFinLot, setDateFinLot] = useState(formatDateInput(finSemaine(new Date(dateReference))))
+  const [dateFinLot, setDateFinLot] = useState(formatDateInput(finSemaine(new Date(`${dateReference}T00:00:00`))))
   const [formulaireLot, setFormulaireLot] = useState<FormulairePlanning>(formulaireInitial)
   const [remplacerExistants, setRemplacerExistants] = useState(false)
   const [filtreDomaine, setFiltreDomaine] = useState<DomaineFiltre>('tous')
@@ -780,7 +780,9 @@ function normaliserPayload(payload: PlanningPayload): PlanningPayload {
 
 function debutSemaine(date: Date) {
   const resultat = new Date(date)
-  resultat.setDate(resultat.getDate() - resultat.getDay())
+  const jour = resultat.getDay()
+  const decalage = jour === 0 ? -6 : 1 - jour
+  resultat.setDate(resultat.getDate() + decalage)
   return resultat
 }
 

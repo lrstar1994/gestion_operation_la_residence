@@ -9,6 +9,7 @@ import {
   modifierTachePeriodique,
   realiserTachePeriodique,
   reporterTachePeriodique,
+  supprimerPlanningTachePeriodique,
   supprimerTachePeriodique,
   type LourdeurTache,
   type NatureTache,
@@ -45,7 +46,7 @@ export function TachesPeriodiques() {
   const [idExecutantAttributionLot, setIdExecutantAttributionLot] = useState('')
   const [idsTachesAvenirSelectionnees, setIdsTachesAvenirSelectionnees] = useState<string[]>([])
   const [idExecutantAttributionAvenir, setIdExecutantAttributionAvenir] = useState('')
-  const { estAdmin } = useAuth()
+  const { estAdmin, peutAccederAuDomaine } = useAuth()
   const {
     taches,
     planning,
@@ -90,6 +91,7 @@ export function TachesPeriodiques() {
     () => idPlanningAAttribuer ? propositions.filter((proposition) => proposition.planning.id === idPlanningAAttribuer) : propositions,
     [idPlanningAAttribuer, propositions],
   )
+  const peutSupprimerPlanning = estAdmin() || peutAccederAuDomaine('chambres')
 
   useEffect(() => {
     const idsVisibles = new Set(planningSuivi.map((item) => item.id))
@@ -174,6 +176,27 @@ export function TachesPeriodiques() {
       await charger()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Suppression impossible.')
+    }
+  }
+
+  async function supprimerPlanning(planningItem: TachePeriodiquePlanning) {
+    if (!peutSupprimerPlanning) {
+      toast.error("Vous n'avez pas le droit de supprimer cette tache.")
+      return
+    }
+
+    if (!window.confirm(`Supprimer definitivement cette tache du suivi ?\n\n${planningItem.tache?.nom || 'Tache'} - ${planningItem.lieu?.nom || 'Lieu'}`)) return
+
+    setSoumission(true)
+    try {
+      await supprimerPlanningTachePeriodique(planningItem.id)
+      toast.success('Tache supprimee du suivi.')
+      setIdsTachesSelectionnees((selection) => selection.filter((id) => id !== planningItem.id))
+      await charger()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Suppression impossible.')
+    } finally {
+      setSoumission(false)
     }
   }
 
@@ -568,6 +591,7 @@ export function TachesPeriodiques() {
                             <button onClick={() => { setIdPlanningAAttribuer(item.id); setOnglet('propositions') }} className={iconButton}>Attribuer</button>
                           )}
                           {peutReporterTache(item) && <button onClick={() => setReport(item)} className={iconButton}>Reporter</button>}
+                          {peutSupprimerPlanning && <button type="button" disabled={soumission} onClick={() => void supprimerPlanning(item)} className={dangerButton}>Supprimer</button>}
                         </div>
                       </Td>
                     </tr>

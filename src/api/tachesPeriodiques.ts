@@ -154,6 +154,15 @@ export async function modifierPlanningTachePeriodique(id: string, payload: Parti
   return data
 }
 
+export async function supprimerPlanningTachePeriodique(id: string) {
+  const { error } = await supabase
+    .from('tache_periodique_planning')
+    .delete()
+    .eq('id', id)
+
+  if (error) throw error
+}
+
 export async function realiserTachePeriodique(
   planning: TachePeriodiquePlanning,
   payload: { id_executant: string | null; date_realisation: string; duree_minutes: number | null; commentaire: string | null; idEtatAFaire: string },
