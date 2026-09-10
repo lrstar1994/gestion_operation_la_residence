@@ -10,6 +10,7 @@ import { GestionLieux } from './pages/GestionLieux'
 import { GestionTypesMouvement } from './pages/GestionTypesMouvement'
 import { GestionUtilisateurs } from './pages/GestionUtilisateurs'
 import { HistoriqueInterventions } from './pages/HistoriqueInterventions'
+import { HistoriqueChambres } from './pages/HistoriqueChambres'
 import { HistoriquePlanningChambres } from './pages/HistoriquePlanningChambres'
 import { Inscription } from './pages/Inscription'
 import { InterventionsMaintenance } from './pages/InterventionsMaintenance'
@@ -53,6 +54,7 @@ function LayoutPrive() {
             <Route path="planning-chambres" element={<PlanningChambres />} />
             <Route path="travail-chambres" element={<TravailChambres />} />
             <Route path="historique-planning-chambres" element={<HistoriquePlanningChambres />} />
+            <Route path="historique-chambres" element={<HistoriqueChambres />} />
             <Route path="menages-chambres" element={<MenagesChambres />} />
             <Route path="suivi-operationnel" element={<SuiviOperational />} />
           </Route>

@@ -165,7 +165,7 @@ function SidebarContent({
       titre: 'Historiques',
       liens: [
         { to: '/historique-planning-chambres', icon: CalendarClock, label: 'Historique planning chambres', visible: peutVoirPlanningChambres },
-        { to: '/menages-chambres', icon: History, label: 'Historique des chambres', visible: peutVoirPlanningChambres },
+        { to: '/historique-chambres', icon: History, label: 'Historique des chambres', visible: peutVoirPlanningChambres },
         { to: '/historique-interventions', icon: History, label: 'Historique interventions', visible: estAdmin },
       ],
     },

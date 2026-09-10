@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Loader2, RefreshCcw, Search } from 'lucide-react'
 import { toast } from 'sonner'
-import { listerExecutants, type Executant } from '../api/executants'
 import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
 import {
-  idsExecutantsPlanningChambre,
-  libelleExecutantsPlanningChambre,
   listerPlanningChambre,
   listerTypesMouvement,
   type PlanningChambre,
@@ -19,10 +16,8 @@ export function HistoriquePlanningChambres() {
   const [recherche, setRecherche] = useState('')
   const [batimentFiltre, setBatimentFiltre] = useState('tous')
   const [chambreFiltre, setChambreFiltre] = useState('tous')
-  const [executantFiltre, setExecutantFiltre] = useState('tous')
   const [typeFiltre, setTypeFiltre] = useState('tous')
   const [chambres, setChambres] = useState<Lieu[]>([])
-  const [executants, setExecutants] = useState<Executant[]>([])
   const [types, setTypes] = useState<TypeMouvement[]>([])
   const [planning, setPlanning] = useState<PlanningChambre[]>([])
   const [chargement, setChargement] = useState(true)
@@ -35,17 +30,15 @@ export function HistoriquePlanningChambres() {
 
     setChargement(true)
     try {
-      const [lieuxResultat, executantsResultat, typesResultat, planningResultat] = await Promise.all([
+      const [lieuxResultat, typesResultat, planningResultat] = await Promise.all([
         listerLieux(),
-        listerExecutants(),
         listerTypesMouvement(),
         listerPlanningChambre(dateDebut, dateFin),
       ])
 
       setChambres(lieuxResultat.filter((lieu) => lieu.est_actif && estLieuChambre(lieu)))
-      setExecutants(executantsResultat)
-      setTypes(typesResultat)
-      setPlanning(planningResultat.filter((mouvement) => mouvement.date < formatDateInput(new Date())))
+      setTypes(typesResultat.filter((type) => estTypeOccupation(type.nom)))
+      setPlanning(planningResultat.filter((mouvement) => mouvement.date < formatDateInput(new Date()) && estMouvementOccupation(mouvement)))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Historique planning impossible a charger.')
     } finally {
@@ -68,18 +61,17 @@ export function HistoriquePlanningChambres() {
     return planning
       .filter((mouvement) => chambreFiltre === 'tous' || mouvement.id_lieu === chambreFiltre)
       .filter((mouvement) => batimentFiltre === 'tous' || mouvement.lieu?.id_batiment === batimentFiltre)
-      .filter((mouvement) => executantFiltre === 'tous' || idsExecutantsPlanningChambre(mouvement).includes(executantFiltre))
       .filter((mouvement) => typeFiltre === 'tous' || mouvement.id_type_mouvement === typeFiltre)
       .filter((mouvement) => {
         if (!terme) return true
-        return [mouvement.lieu?.nom, mouvement.lieu?.numero, mouvement.lieu?.batiment?.nom, libelleExecutantsPlanningChambre(mouvement), mouvement.type_mouvement?.nom]
+        return [mouvement.lieu?.nom, mouvement.lieu?.numero, mouvement.lieu?.batiment?.nom, mouvement.type_mouvement?.nom]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
           .includes(terme)
       })
       .sort((a, b) => a.date.localeCompare(b.date) || (a.lieu?.nom || '').localeCompare(b.lieu?.nom || ''))
-  }, [batimentFiltre, chambreFiltre, executantFiltre, planning, recherche, typeFiltre])
+  }, [batimentFiltre, chambreFiltre, planning, recherche, typeFiltre])
 
   const datesVisibles = useMemo(() => {
     const aujourdHui = formatDateInput(new Date())
@@ -145,7 +137,7 @@ export function HistoriquePlanningChambres() {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-7">
+        <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-2 xl:grid-cols-6">
           <Champ label="Date debut"><input type="date" value={dateDebut} onChange={(event) => setDateDebut(event.target.value)} className={inputClass} /></Champ>
           <Champ label="Date fin"><input type="date" value={dateFin} onChange={(event) => setDateFin(event.target.value)} className={inputClass} /></Champ>
           <Champ label="Batiment">
@@ -160,12 +152,6 @@ export function HistoriquePlanningChambres() {
               {chambres.map((chambre) => <option key={chambre.id} value={chambre.id}>{nomLieu(chambre)}</option>)}
             </select>
           </Champ>
-          <Champ label="Executant">
-            <select value={executantFiltre} onChange={(event) => setExecutantFiltre(event.target.value)} className={inputClass}>
-              <option value="tous">Tous</option>
-              {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
-            </select>
-          </Champ>
           <Champ label="Type">
             <select value={typeFiltre} onChange={(event) => setTypeFiltre(event.target.value)} className={inputClass}>
               <option value="tous">Tous</option>
@@ -175,7 +161,7 @@ export function HistoriquePlanningChambres() {
           <Champ label="Recherche">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input value={recherche} onChange={(event) => setRecherche(event.target.value)} placeholder="Chambre, executant..." className={`${inputClass} pl-9`} />
+              <input value={recherche} onChange={(event) => setRecherche(event.target.value)} placeholder="Rechercher une chambre..." className={`${inputClass} pl-9`} />
             </label>
           </Champ>
         </div>
@@ -193,9 +179,10 @@ export function HistoriquePlanningChambres() {
               <div className="min-w-[980px]">
                 <div
                   className="grid border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase text-slate-500"
-                  style={{ gridTemplateColumns: `190px repeat(${datesVisibles.length}, minmax(132px, 1fr))` }}
+                  style={{ gridTemplateColumns: `145px 105px repeat(${datesVisibles.length}, minmax(132px, 1fr))` }}
                 >
-                  <div className="sticky left-0 z-10 border-r border-slate-200 bg-slate-50 px-4 py-3">Chambre</div>
+                  <div className="sticky left-0 z-20 border-r border-slate-200 bg-slate-50 px-3 py-3">Batiment</div>
+                  <div className="sticky left-[145px] z-20 border-r border-slate-200 bg-slate-50 px-3 py-3">Chambre</div>
                   {datesVisibles.map((date) => (
                     <div key={date} className="border-r border-slate-200 px-3 py-3 text-center last:border-r-0">
                       <div>{jourSemaine(date)}</div>
@@ -206,24 +193,14 @@ export function HistoriquePlanningChambres() {
 
                 {chambresParBatiment.map((groupe) => (
                   <div key={groupe.id}>
-                    <div
-                      className="grid border-b border-slate-200 bg-slate-100 text-xs font-bold uppercase text-slate-700"
-                      style={{ gridTemplateColumns: `190px repeat(${datesVisibles.length}, minmax(132px, 1fr))` }}
-                    >
-                      <div className="sticky left-0 z-10 border-r border-slate-200 bg-slate-100 px-4 py-2">{groupe.nom}</div>
-                      <div className="col-span-full hidden" />
-                    </div>
-
                     {groupe.chambres.map((chambre) => (
                       <div
                         key={chambre.id}
                         className="grid min-h-[78px] border-b border-slate-100 last:border-b-0"
-                        style={{ gridTemplateColumns: `190px repeat(${datesVisibles.length}, minmax(132px, 1fr))` }}
+                        style={{ gridTemplateColumns: `145px 105px repeat(${datesVisibles.length}, minmax(132px, 1fr))` }}
                       >
-                        <div className="sticky left-0 z-10 flex flex-col justify-center border-r border-slate-200 bg-white px-4 py-3">
-                          <span className="font-semibold text-slate-900">{chambre.nom}</span>
-                          <span className="text-xs text-slate-500">{chambre.batiment?.nom || '-'}</span>
-                        </div>
+                        <div className="sticky left-0 z-10 flex items-center border-r border-slate-200 bg-white px-3 py-3 text-xs font-bold uppercase text-slate-700">{groupe.nom}</div>
+                        <div className="sticky left-[145px] z-10 flex items-center border-r border-slate-200 bg-white px-3 py-3 font-semibold text-slate-900">{chambre.numero || chambre.nom}</div>
 
                         {datesVisibles.map((date) => {
                           const mouvements = mouvementsParCellule.get(`${chambre.id}-${date}`) || []
@@ -236,7 +213,6 @@ export function HistoriquePlanningChambres() {
                                   {mouvements.map((mouvement) => (
                                     <div key={mouvement.id} className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
                                       <BadgeMouvement couleur={mouvement.type_mouvement?.couleur}>{mouvement.type_mouvement?.nom || '-'}</BadgeMouvement>
-                                      <p className="mt-2 truncate text-xs font-medium text-slate-700">{libelleExecutantsPlanningChambre(mouvement)}</p>
                                     </div>
                                   ))}
                                 </div>
@@ -263,24 +239,11 @@ export function HistoriquePlanningChambres() {
   )
 }
 
-function Champ({ label, children }: { label: string; children: React.ReactNode }) {
+function Champ({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block"><span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>{children}</label>
 }
 
-function Badge({ tone, children }: { tone: 'red' | 'orange' | 'green' | 'teal' | 'blue' | 'slate'; children: React.ReactNode }) {
-  const classes = {
-    red: 'bg-rose-50 text-rose-800 ring-rose-100',
-    orange: 'bg-amber-50 text-amber-800 ring-amber-100',
-    green: 'bg-emerald-50 text-emerald-800 ring-emerald-100',
-    teal: 'bg-teal-50 text-teal-800 ring-teal-100',
-    blue: 'bg-sky-50 text-sky-800 ring-sky-100',
-    slate: 'bg-slate-100 text-slate-700 ring-slate-200',
-  }
-
-  return <span className={`inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1 ${classes[tone]}`}>{children}</span>
-}
-
-function BadgeMouvement({ couleur, children }: { couleur?: string; children: React.ReactNode }) {
+function BadgeMouvement({ couleur, children }: { couleur?: string; children: ReactNode }) {
   return (
     <span className="inline-flex rounded-md px-2 py-1 text-xs font-semibold ring-1" style={styleMouvement(couleur)}>
       {children}
@@ -307,6 +270,23 @@ function assombrirHex(hex: string, facteur: number) {
 
 function nomLieu(lieu: Lieu) {
   return `${lieu.nom}${lieu.batiment ? ` (${lieu.batiment.nom})` : ''}`
+}
+
+function estMouvementOccupation(mouvement: PlanningChambre) {
+  return estTypeOccupation(mouvement.type_mouvement?.nom)
+}
+
+function estTypeOccupation(nom?: string | null) {
+  const valeur = normaliser(nom)
+  return ['ARRIVEE', 'DEPART', 'RECOUCHE'].includes(valeur)
+}
+
+function normaliser(valeur?: string | null) {
+  return (valeur || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
 }
 
 function ajouterJours(date: string, jours: number) {
