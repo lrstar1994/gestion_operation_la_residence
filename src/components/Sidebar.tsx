@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
-  Building2,
   CalendarDays,
+  ChevronDown,
+  ChevronRight,
   DoorOpen,
   Flame,
   History,
@@ -98,6 +99,7 @@ export function Sidebar() {
           peutVoirMaintenance={peutVoirMaintenance}
           bloquesAujourdhui={bloquesAujourdhui}
           estAdmin={estAdmin()}
+          peutVoirSuiviDuJour={peutVoirPlanningChambres || peutVoirMaintenance}
           nom={profil?.nom}
           email={profil?.email}
           onDeconnexion={() => void deconnecter()}
@@ -108,12 +110,12 @@ export function Sidebar() {
 }
 
 function SidebarContent({
-  liensVisibles,
   peutVoirExecutants,
   peutVoirPlanning,
   peutVoirTachesPeriodiques,
   peutVoirPlanningChambres,
   peutVoirMaintenance,
+  peutVoirSuiviDuJour,
   bloquesAujourdhui,
   estAdmin,
   nom,
@@ -125,12 +127,80 @@ function SidebarContent({
   peutVoirTachesPeriodiques: boolean
   peutVoirPlanningChambres: boolean
   peutVoirMaintenance: boolean
+  peutVoirSuiviDuJour: boolean
   bloquesAujourdhui: number
   estAdmin: boolean
   nom?: string
   email?: string
   onDeconnexion: () => void
 }) {
+  const location = useLocation()
+  const sections = [
+    {
+      id: 'dashboard',
+      titre: 'Tableau de bord',
+      liens: [{ to: '/', icon: Home, label: 'Tableau de bord', visible: true }],
+    },
+    {
+      id: 'planification',
+      titre: 'Planification',
+      liens: [
+        { to: '/planning', icon: CalendarDays, label: 'Planning du personnel', visible: peutVoirPlanning },
+        { to: '/planning-chambres', icon: DoorOpen, label: 'Planning chambres', visible: peutVoirPlanningChambres },
+        { to: '/taches-periodiques', icon: Repeat, label: 'Taches periodiques', visible: peutVoirTachesPeriodiques },
+        { to: '/menages-chambres', icon: Sparkles, label: 'Menages chambres', visible: peutVoirPlanningChambres },
+      ],
+    },
+    {
+      id: 'suivi-hebergement',
+      titre: 'Suivi hebergement',
+      liens: [
+        { to: '/suivi-du-jour', icon: ClipboardCheck, label: 'Suivi du jour', visible: peutVoirSuiviDuJour },
+        { to: '/travail-chambres', icon: CalendarCheck, label: 'Travail chambres', visible: peutVoirPlanningChambres },
+        { to: '/suivi-operationnel', icon: ClipboardCheck, label: 'Suivi operationnel', visible: peutVoirPlanningChambres, badge: bloquesAujourdhui },
+      ],
+    },
+    {
+      id: 'historiques',
+      titre: 'Historiques',
+      liens: [
+        { to: '/historique-planning-chambres', icon: CalendarClock, label: 'Historique planning chambres', visible: peutVoirPlanningChambres },
+        { to: '/menages-chambres', icon: History, label: 'Historique des chambres', visible: peutVoirPlanningChambres },
+        { to: '/historique-interventions', icon: History, label: 'Historique interventions', visible: estAdmin },
+      ],
+    },
+    {
+      id: 'maintenance',
+      titre: 'Maintenance',
+      liens: [
+        { to: '/interventions-maintenance', icon: Wrench, label: 'Interventions', visible: peutVoirMaintenance },
+        { to: '/gestion-chauffe-eau', icon: Flame, label: 'Gestion chauffe-eau', visible: peutVoirMaintenance },
+      ],
+    },
+    {
+      id: 'parametres',
+      titre: 'Parametres',
+      liens: [
+        { to: '/lieux', icon: MapPin, label: 'Lieux', visible: true },
+        { to: '/executants', icon: UserRoundCog, label: 'Executants', visible: peutVoirExecutants },
+        { to: '/types-mouvement', icon: ListChecks, label: 'Types de mouvement', visible: estAdmin },
+        { to: '/users', icon: Users, label: 'Utilisateurs', visible: estAdmin },
+      ],
+    },
+  ].map((section) => ({ ...section, liens: section.liens.filter((lien) => lien.visible) }))
+    .filter((section) => section.liens.length > 0)
+  const sectionActive = sections.find((section) => section.liens.some((lien) => lien.to === location.pathname || (lien.to === '/' && location.pathname === '/')))
+  const [sectionsOuvertes, setSectionsOuvertes] = useState<string[]>(() => sections.map((section) => section.id))
+
+  useEffect(() => {
+    if (!sectionActive) return
+    setSectionsOuvertes((ouverts) => ouverts.includes(sectionActive.id) ? ouverts : [...ouverts, sectionActive.id])
+  }, [sectionActive?.id])
+
+  function basculerSection(id: string) {
+    setSectionsOuvertes((ouverts) => ouverts.includes(id) ? ouverts.filter((item) => item !== id) : [...ouverts, id])
+  }
+
   return (
     <>
       <div className="mb-8 px-2">
@@ -138,23 +208,19 @@ function SidebarContent({
         <h1 className="mt-1 text-xl font-bold text-slate-950">Gestion hoteliere</h1>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto pr-1">
-        <MenuLink to="/" icon={Home} label="Tableau de bord" />
-
-        {peutVoirPlanning && <MenuLink to="/planning" icon={CalendarDays} label="Planning du personnel" />}
-        {peutVoirTachesPeriodiques && <MenuLink to="/taches-periodiques" icon={Repeat} label="Taches periodiques" />}
-        {peutVoirMaintenance && <MenuLink to="/interventions-maintenance" icon={Wrench} label="Interventions" />}
-        {peutVoirMaintenance && <MenuLink to="/gestion-chauffe-eau" icon={Flame} label="Gestion chauffe eau" />}
-        {estAdmin && <MenuLink to="/historique-interventions" icon={History} label="Historique interventions" />}
-        {peutVoirPlanningChambres && <MenuLink to="/planning-chambres" icon={DoorOpen} label="Planning chambres" />}
-        {peutVoirPlanningChambres && <MenuLink to="/travail-chambres" icon={CalendarCheck} label="Travail chambres" />}
-        {peutVoirPlanningChambres && <MenuLink to="/historique-planning-chambres" icon={CalendarClock} label="Historique chambres" />}
-        {peutVoirPlanningChambres && <MenuLink to="/menages-chambres" icon={Sparkles} label="Menages chambres" />}
-        {peutVoirPlanningChambres && <MenuLink to="/suivi-operationnel" icon={ClipboardCheck} label="Suivi operationnel" badge={bloquesAujourdhui} />}
-        <MenuLink to="/lieux" icon={MapPin} label="Lieux" />
-        {peutVoirExecutants && <MenuLink to="/executants" icon={UserRoundCog} label="Executants" />}
-        {estAdmin && <MenuLink to="/types-mouvement" icon={ListChecks} label="Types mouvement" />}
-        {estAdmin && <MenuLink to="/users" icon={Users} label="Utilisateurs" />}
+      <nav className="flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
+        {sections.map((section) => (
+          <MenuSection
+            key={section.id}
+            titre={section.titre}
+            ouvert={sectionsOuvertes.includes(section.id)}
+            onToggle={() => basculerSection(section.id)}
+          >
+            {section.liens.map((lien) => (
+              <MenuLink key={`${section.id}-${lien.to}-${lien.label}`} to={lien.to} icon={lien.icon} label={lien.label} badge={lien.badge} />
+            ))}
+          </MenuSection>
+        ))}
       </nav>
 
       <div className="mt-4 border-t border-slate-200 pt-4">
@@ -172,6 +238,32 @@ function SidebarContent({
         </button>
       </div>
     </>
+  )
+}
+
+function MenuSection({
+  titre,
+  ouvert,
+  onToggle,
+  children,
+}: {
+  titre: string
+  ouvert: boolean
+  onToggle: () => void
+  children: ReactNode
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-xs font-bold uppercase tracking-wide text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+      >
+        <span>{titre}</span>
+        {ouvert ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+      </button>
+      {ouvert && <div className="mt-1 space-y-1">{children}</div>}
+    </div>
   )
 }
 

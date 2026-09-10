@@ -18,6 +18,7 @@ import { PageDomaine } from './pages/PageDomaine'
 import { PlanningChambres } from './pages/PlanningChambres'
 import { PlanningHebdomadaire } from './pages/PlanningHebdomadaire'
 import { SuiviOperational } from './pages/SuiviOperational'
+import { SuiviDuJour } from './pages/SuiviDuJour'
 import { TableauDeBord } from './pages/TableauDeBord'
 import { TachesPeriodiques } from './pages/TachesPeriodiques'
 import { TravailChambres } from './pages/TravailChambres'
@@ -54,6 +55,9 @@ function LayoutPrive() {
             <Route path="historique-planning-chambres" element={<HistoriquePlanningChambres />} />
             <Route path="menages-chambres" element={<MenagesChambres />} />
             <Route path="suivi-operationnel" element={<SuiviOperational />} />
+          </Route>
+          <Route element={<ProtectedRoute domaines={['chambres', 'maintenance']} />}>
+            <Route path="suivi-du-jour" element={<SuiviDuJour />} />
           </Route>
           <Route element={<ProtectedRoute adminOnly />}>
             <Route path="users" element={<GestionUtilisateurs />} />
