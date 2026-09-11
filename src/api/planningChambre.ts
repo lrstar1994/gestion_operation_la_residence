@@ -343,14 +343,10 @@ export async function remplacerItemsTemplatePlanningChambre(
 export function calculerCharges(
   planning: PlanningChambre[],
   executants: Executant[],
-  planningTaches: TachePeriodiquePlanning[] = [],
-  historiqueTaches: TachePeriodiqueHistorique[] = [],
+  _planningTaches: TachePeriodiquePlanning[] = [],
+  _historiqueTaches: TachePeriodiqueHistorique[] = [],
 ) {
   return executants.map<ChargeExecutant>((executant) => {
-    const tachesExecutant = planningTaches
-      .filter((tache) => tache.id_executant === executant.id && tache.est_actif && !tache.date_realisation && tache.etat?.nom !== 'ANNULEE')
-    const tachesRealiseesExecutant = historiqueTaches
-      .filter((tache) => tache.id_executant === executant.id)
     const capaciteMax = executant.domaine?.capacite_max ?? null
     const pointsParDateMap = new Map<string, number>()
 
@@ -360,14 +356,6 @@ export function calculerCharges(
 
       const pointsPartages = (mouvement.type_mouvement?.points || 0) / Math.max(ids.length, 1)
       pointsParDateMap.set(mouvement.date, (pointsParDateMap.get(mouvement.date) || 0) + pointsPartages)
-    })
-
-    tachesExecutant.forEach((tache) => {
-      pointsParDateMap.set(tache.date_echeance, (pointsParDateMap.get(tache.date_echeance) || 0) + (tache.tache?.points_estimes || 0))
-    })
-
-    tachesRealiseesExecutant.forEach((tache) => {
-      pointsParDateMap.set(tache.date_realisation, (pointsParDateMap.get(tache.date_realisation) || 0) + (tache.tache?.points_estimes || 0))
     })
 
     const pointsParDate = Array.from(pointsParDateMap.entries())

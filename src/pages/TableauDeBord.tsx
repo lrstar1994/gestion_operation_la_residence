@@ -90,10 +90,8 @@ export function TableauDeBord() {
     [interventionsBloquees, interventionsNonAffectees, interventionsUrgentes],
   )
   const charges = useMemo(() => {
-    const tachesDuJour = taches.filter((tache) => tache.date_echeance === aujourdHui)
-    const historiqueDuJour = historiqueTaches.filter((tache) => tache.date_realisation === aujourdHui)
-    return calculerCharges(mouvements, executants, tachesDuJour, historiqueDuJour)
-  }, [aujourdHui, executants, historiqueTaches, mouvements, taches])
+    return calculerCharges(mouvements, executants)
+  }, [executants, mouvements])
   const surcharges = charges.filter((charge) => charge.surcharge)
   const chargesDuJour = charges.filter((charge) => pointsDuJour(charge) > 0).slice(0, 8)
   const mouvementsNonAffectes = mouvements.filter((mouvement) => !mouvement.id_executant).length

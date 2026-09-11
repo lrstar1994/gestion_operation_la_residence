@@ -76,7 +76,7 @@ export function TachesPeriodiques() {
     })
   }, [categorieFiltre, prioriteFiltre, recherche, statutFiltre, taches])
   const aujourdHui = formatDateInput(new Date())
-  const planningTrie = useMemo(() => [...planning].sort((a, b) => a.date_echeance.localeCompare(b.date_echeance)), [planning])
+  const planningTrie = useMemo(() => [...planning].sort((a, b) => (a.date_execution || a.date_echeance).localeCompare(b.date_execution || b.date_echeance)), [planning])
   const planningSuivi = useMemo(
     () => planningTrie.filter((item) => item.est_actif && !item.date_realisation && item.date_echeance <= aujourdHui),
     [aujourdHui, planningTrie],
@@ -233,6 +233,7 @@ export function TachesPeriodiques() {
         id_executant: null,
         date_realisation: null,
         date_echeance: dateEcheance,
+        date_execution: dateEcheance,
         date_echeance_originale: dateEcheance,
         id_etat: etatAFaire.id,
         est_reportee: false,
@@ -264,9 +265,10 @@ export function TachesPeriodiques() {
     try {
       await modifierPlanningTachePeriodique(proposition.planning.id, {
         id_executant: idExecutant || proposition.executant.id,
+        date_execution: proposition.dateAffectation,
         id_etat: etatAFaire.id,
       })
-      toast.success('Executant attribue. Les points sont maintenant comptes dans la charge.')
+      toast.success('Executant attribue.')
       await charger()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Validation impossible.')
@@ -309,8 +311,10 @@ export function TachesPeriodiques() {
 
     setSoumission(true)
     try {
-      await Promise.all(idsTachesSelectionnees.map((id) => modifierPlanningTachePeriodique(id, {
+      const selection = planningSuivi.filter((item) => idsTachesSelectionnees.includes(item.id))
+      await Promise.all(selection.map((item) => modifierPlanningTachePeriodique(item.id, {
         id_executant: idExecutantAttributionLot,
+        date_execution: item.date_execution || (item.date_echeance < aujourdHui ? aujourdHui : item.date_echeance),
         id_etat: etatAFaire.id,
       })))
       toast.success(`${idsTachesSelectionnees.length} tache(s) attribuee(s).`)
@@ -344,8 +348,10 @@ export function TachesPeriodiques() {
 
     setSoumission(true)
     try {
-      await Promise.all(idsTachesAvenirSelectionnees.map((id) => modifierPlanningTachePeriodique(id, {
+      const selection = planningAvenir.filter((item) => idsTachesAvenirSelectionnees.includes(item.id))
+      await Promise.all(selection.map((item) => modifierPlanningTachePeriodique(item.id, {
         id_executant: idExecutantAttributionAvenir,
+        date_execution: item.date_execution || item.date_echeance,
         id_etat: etatAFaire.id,
       })))
       toast.success(`${idsTachesAvenirSelectionnees.length} tache(s) a venir attribuee(s).`)
@@ -575,9 +581,13 @@ export function TachesPeriodiques() {
                           className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
                         />
                       </Td>
-                      <Td><p className="font-semibold text-slate-900">{item.tache?.nom}</p><p className="text-xs text-slate-500">{item.tache?.nature} - {item.tache?.points_estimes} pts</p></Td>
+                      <Td><p className="font-semibold text-slate-900">{item.tache?.nom}</p><p className="text-xs text-slate-500">{item.tache?.nature}</p></Td>
                       <Td>{item.lieu?.nom}</Td>
-                      <Td>{formatDateCourte(item.date_echeance)}{item.est_reportee && <p className="text-xs text-amber-700">Reportee</p>}</Td>
+                      <Td>
+                        <p>{formatDateCourte(item.date_echeance)}</p>
+                        {item.date_execution && item.date_execution !== item.date_echeance && <p className="text-xs text-teal-700">Execution {formatDateCourte(item.date_execution)}</p>}
+                        {item.est_reportee && <p className="text-xs text-amber-700">Reportee</p>}
+                      </Td>
                       <Td><Badge tone={classification?.couleur || 'slate'}>{classification?.label || '-'}</Badge></Td>
                       <Td><Badge tone={couleurEtat(item.etat?.nom)}>{libelleEtatTache(item.etat?.nom)}</Badge></Td>
                       <Td>{item.executant?.nom || 'Non affecte'}</Td>
@@ -651,9 +661,13 @@ export function TachesPeriodiques() {
                           className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
                         />
                       </Td>
-                      <Td><p className="font-semibold text-slate-900">{item.tache?.nom}</p><p className="text-xs text-slate-500">{item.tache?.nature} - {item.tache?.points_estimes} pts</p></Td>
+                      <Td><p className="font-semibold text-slate-900">{item.tache?.nom}</p><p className="text-xs text-slate-500">{item.tache?.nature}</p></Td>
                       <Td>{item.lieu?.nom}</Td>
-                      <Td>{formatDateCourte(item.date_echeance)}{item.est_reportee && <p className="text-xs text-amber-700">Reportee</p>}</Td>
+                      <Td>
+                        <p>{formatDateCourte(item.date_echeance)}</p>
+                        {item.date_execution && item.date_execution !== item.date_echeance && <p className="text-xs text-teal-700">Execution {formatDateCourte(item.date_execution)}</p>}
+                        {item.est_reportee && <p className="text-xs text-amber-700">Reportee</p>}
+                      </Td>
                       <Td><Badge tone={classification?.couleur || 'slate'}>{classification?.label || '-'}</Badge></Td>
                       <Td><Badge tone={couleurEtat(item.etat?.nom)}>{libelleEtatTache(item.etat?.nom)}</Badge></Td>
                       <Td>{item.executant?.nom || 'Non affecte'}</Td>
@@ -685,7 +699,7 @@ export function TachesPeriodiques() {
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
                     <p className="font-semibold text-slate-950">{proposition.planning.tache?.nom} - {proposition.planning.lieu?.nom}</p>
-                    <p className="text-sm text-slate-500">{formatDateCourte(proposition.planning.date_echeance)} - {proposition.planning.tache?.points_estimes} pts - {proposition.classification.label}</p>
+                    <p className="text-sm text-slate-500">{formatDateCourte(proposition.planning.date_echeance)} - {proposition.classification.label}</p>
                     {proposition.dateAffectation !== proposition.planning.date_echeance && (
                       <p className="mt-1 text-xs font-semibold text-teal-700">A traiter le {formatDateCourte(proposition.dateAffectation)}</p>
                     )}

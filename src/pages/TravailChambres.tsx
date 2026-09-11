@@ -9,8 +9,10 @@ import {
   libelleExecutantsPlanningChambre,
   listerEtatsMouvement,
   listerPlanningChambre,
+  listerTypesMouvement,
   type EtatMouvement,
   type PlanningChambre,
+  type TypeMouvement,
 } from '../api/planningChambre'
 import {
   creerTacheChambre,
@@ -24,9 +26,15 @@ import {
   type TacheChambrePayload,
   type UrgenceTacheChambre,
 } from '../api/tachesChambres'
+import {
+  listerPlanningTachesPeriodiques,
+  modifierPlanningTachePeriodique,
+  type TachePeriodiquePlanning,
+} from '../api/tachesPeriodiques'
 
 const urgences: UrgenceTacheChambre[] = ['haute', 'normale', 'basse']
 const joursLabels = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
+type ModeProgrammation = 'prevus' | 'autres' | 'periodiques'
 
 type ItemPlanningTravail = {
   id: string
@@ -83,16 +91,24 @@ export function TravailChambres() {
   const [etatFiltre, setEtatFiltre] = useState('tous')
   const [chambres, setChambres] = useState<Lieu[]>([])
   const [executants, setExecutants] = useState<Executant[]>([])
+  const [tousExecutants, setTousExecutants] = useState<Executant[]>([])
   const [etats, setEtats] = useState<EtatMouvement[]>([])
+  const [typesMouvement, setTypesMouvement] = useState<TypeMouvement[]>([])
   const [planningExecutants, setPlanningExecutants] = useState<PlanningExecutant[]>([])
   const [mouvements, setMouvements] = useState<PlanningChambre[]>([])
   const [taches, setTaches] = useState<TacheChambre[]>([])
   const [toutesTaches, setToutesTaches] = useState<TacheChambre[]>([])
+  const [planningPeriodiques, setPlanningPeriodiques] = useState<TachePeriodiquePlanning[]>([])
   const [chargement, setChargement] = useState(true)
   const [soumission, setSoumission] = useState(false)
   const [formulaireOuvert, setFormulaireOuvert] = useState(false)
 
   const [idMouvement, setIdMouvement] = useState('')
+  const [modeProgrammation, setModeProgrammation] = useState<ModeProgrammation>('prevus')
+  const [idsTravauxPrevus, setIdsTravauxPrevus] = useState<string[]>([])
+  const [idTypeMenageManuel, setIdTypeMenageManuel] = useState('')
+  const [idsChambresMenageManuel, setIdsChambresMenageManuel] = useState<string[]>([])
+  const [idsTachesPeriodiquesProgrammation, setIdsTachesPeriodiquesProgrammation] = useState<string[]>([])
   const [dateExecution, setDateExecution] = useState(aujourdHui)
   const [dateLimite, setDateLimite] = useState(aujourdHui)
   const [idsExecutants, setIdsExecutants] = useState<string[]>([])
@@ -115,27 +131,34 @@ export function TravailChambres() {
         lieuxResultat,
         executantsResultat,
         etatsResultat,
+        typesMouvementResultat,
         planningExecutantsResultat,
         mouvementsResultat,
         tachesResultat,
         toutesTachesResultat,
+        planningPeriodiquesResultat,
       ] = await Promise.all([
         listerLieux(),
         listerExecutants(),
         listerEtatsMouvement(),
+        listerTypesMouvement(),
         listerPlanning(dateDebut, dateFin),
         listerPlanningChambre(aujourdHui, ajouterJours(dateFin, 45)),
         listerTachesChambres(dateDebut, dateFin),
         listerToutesTachesChambres(),
+        listerPlanningTachesPeriodiques(),
       ])
 
       setChambres(lieuxResultat.filter((lieu) => lieu.est_actif && estLieuChambre(lieu)))
+      setTousExecutants(executantsResultat)
       setExecutants(executantsResultat.filter((executant) => executant.domaine?.nom.toLowerCase().includes('chambre')))
       setEtats(etatsResultat)
+      setTypesMouvement(typesMouvementResultat)
       setPlanningExecutants(planningExecutantsResultat)
       setMouvements(mouvementsResultat)
       setTaches(tachesResultat)
       setToutesTaches(toutesTachesResultat)
+      setPlanningPeriodiques(planningPeriodiquesResultat)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Travail chambres impossible a charger.')
     } finally {
@@ -173,6 +196,75 @@ export function TravailChambres() {
   }, [mouvements, mouvementsDejaPlanifies])
 
   const mouvementSelectionne = mouvementsDisponibles.find((mouvement) => mouvement.id === idMouvement)
+  const travauxPrevusProgrammables = useMemo(() => {
+    const tachesExistantes = taches
+      .filter((tache) => estMouvementProgrammable(tache.type_mouvement?.nom))
+      .map((tache) => ({
+        id: `tache-${tache.id}`,
+        planifie: true,
+        date: tache.date_execution,
+        dateSource: tache.date_mouvement,
+        lieu: tache.lieu,
+        type: tache.type_mouvement,
+        points: tache.points,
+        executants: idsExecutantsTacheChambre(tache),
+        tache,
+        mouvement: null as PlanningChambre | null,
+      }))
+
+    const mouvementsNonPlanifies = mouvementsDisponibles.map((mouvement) => ({
+      id: `mouvement-${mouvement.id}`,
+      planifie: false,
+      date: mouvement.date,
+      dateSource: mouvement.date,
+      lieu: mouvement.lieu,
+      type: mouvement.type_mouvement,
+      points: mouvement.type_mouvement?.points || 0,
+      executants: idsExecutantsPlanningChambre(mouvement),
+      tache: null as TacheChambre | null,
+      mouvement,
+    }))
+
+    return [...tachesExistantes, ...mouvementsNonPlanifies]
+      .filter((item) => item.date >= dateDebut && item.date <= dateFin)
+      .filter((item) => batimentFiltre === 'tous' || item.lieu?.id_batiment === batimentFiltre)
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.lieu?.nom || '').localeCompare(b.lieu?.nom || ''))
+  }, [batimentFiltre, dateDebut, dateFin, mouvementsDisponibles, taches])
+
+  const typesMenageManuel = useMemo(
+    () => typesMouvement.filter((type) => estTypeMenageManuel(type.nom)),
+    [typesMouvement],
+  )
+  const typeMenageManuelSelectionne = typesMenageManuel.find((type) => type.id === idTypeMenageManuel)
+  const chambresMenageManuel = useMemo(
+    () => chambres.filter((chambre) => idsChambresMenageManuel.includes(chambre.id)),
+    [chambres, idsChambresMenageManuel],
+  )
+  const tachesPeriodiquesProgrammables = useMemo(
+    () => planningPeriodiques
+      .filter((item) => item.est_actif && !item.date_realisation && item.lieu && estLieuChambre(item.lieu))
+      .filter((item) => batimentFiltre === 'tous' || item.lieu?.id_batiment === batimentFiltre)
+      .sort((a, b) => (a.date_execution || a.date_echeance).localeCompare(b.date_execution || b.date_echeance) || (a.lieu?.nom || '').localeCompare(b.lieu?.nom || '')),
+    [batimentFiltre, planningPeriodiques],
+  )
+  const tachesPeriodiquesSelectionnees = useMemo(
+    () => tachesPeriodiquesProgrammables.filter((item) => idsTachesPeriodiquesProgrammation.includes(item.id)),
+    [idsTachesPeriodiquesProgrammation, tachesPeriodiquesProgrammables],
+  )
+
+  const pointsProgrammation = useMemo(() => {
+    if (modeProgrammation === 'prevus') {
+      return travauxPrevusProgrammables
+        .filter((item) => idsTravauxPrevus.includes(item.id))
+        .reduce((total, item) => total + item.points, 0)
+    }
+
+    if (modeProgrammation === 'autres') {
+      return (typeMenageManuelSelectionne?.points || 0) * idsChambresMenageManuel.length
+    }
+
+    return 0
+  }, [idsChambresMenageManuel.length, idsTravauxPrevus, modeProgrammation, travauxPrevusProgrammables, typeMenageManuelSelectionne])
 
   useEffect(() => {
     if (!mouvementSelectionne) return
@@ -395,8 +487,8 @@ export function TravailChambres() {
   }, [itemsPlanning])
 
   const executantsCreationDisponibles = useMemo(
-    () => executantsDisponiblesPourDate(dateExecution),
-    [dateExecution, executants, planningExecutants],
+    () => modeProgrammation === 'periodiques' ? tousExecutants : executantsDisponiblesPourDate(dateExecution),
+    [dateExecution, executants, modeProgrammation, planningExecutants, tousExecutants],
   )
 
   const executantsModalDisponibles = useMemo(
@@ -405,13 +497,13 @@ export function TravailChambres() {
   )
 
   const validationCreation = useMemo(
-    () => verifierAffectation(idsExecutants, dateExecution, mouvementSelectionne?.type_mouvement?.points || 0),
-    [dateExecution, idsExecutants, mouvementSelectionne, taches, executants, planningExecutants],
+    () => verifierAffectation(idsExecutants, dateExecution, pointsProgrammation),
+    [dateExecution, idsExecutants, pointsProgrammation, taches, executants, planningExecutants],
   )
 
   const suggestionsCreation = useMemo(
-    () => suggestionsAffectation(dateExecution, mouvementSelectionne?.type_mouvement?.points || 0, idsExecutants[0]),
-    [dateExecution, idsExecutants, mouvementSelectionne, taches, executants, planningExecutants],
+    () => suggestionsAffectation(dateExecution, pointsProgrammation, idsExecutants[0]),
+    [dateExecution, idsExecutants, pointsProgrammation, taches, executants, planningExecutants],
   )
 
   const validationModal = useMemo(
@@ -423,6 +515,10 @@ export function TravailChambres() {
     () => suggestionsAffectation(modalDateExecution, modalItem?.points || 0, modalExecutants[0], modalItem?.tache?.id),
     [modalDateExecution, modalExecutants, modalItem, taches, executants, planningExecutants],
   )
+  const peutValiderProgrammation =
+    (modeProgrammation === 'prevus' && idsTravauxPrevus.length > 0) ||
+    (modeProgrammation === 'autres' && Boolean(idTypeMenageManuel) && idsChambresMenageManuel.length > 0) ||
+    (modeProgrammation === 'periodiques' && idsTachesPeriodiquesProgrammation.length > 0)
 
   function estExecutantEnTravail(executantId: string | null | undefined, date: string) {
     if (!executantId) return false
@@ -488,6 +584,151 @@ export function TravailChambres() {
       })
       .filter((suggestion) => suggestion.capaciteMax === null || suggestion.pointsApres <= suggestion.capaciteMax * 0.9)
       .sort((a, b) => a.pointsApres - b.pointsApres || a.executant.nom.localeCompare(b.executant.nom))
+  }
+
+  async function validerProgrammation() {
+    if (!etatAffecte) {
+      toast.error("L'etat de travail chambre est introuvable.")
+      return
+    }
+
+    if (dateExecution > dateLimite && modeProgrammation !== 'autres') {
+      toast.error('La date execution doit etre avant ou egale a la date limite.')
+      return
+    }
+
+    if (modeProgrammation !== 'periodiques') {
+      const validation = verifierAffectation(idsExecutants, dateExecution, pointsProgrammation)
+      if (!validation.ok) {
+        toast.warning(validation.message || 'Affectation en surcharge.')
+      }
+    }
+
+    setSoumission(true)
+    try {
+      if (modeProgrammation === 'prevus') {
+        await programmerTravauxPrevus()
+      } else if (modeProgrammation === 'autres') {
+        await programmerMenagesManuels()
+      } else {
+        await programmerTachesPeriodiques()
+      }
+
+      reinitialiserProgrammation()
+      setFormulaireOuvert(false)
+      await charger()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Programmation impossible.')
+    } finally {
+      setSoumission(false)
+    }
+  }
+
+  async function programmerTravauxPrevus() {
+    const selection = travauxPrevusProgrammables.filter((item) => idsTravauxPrevus.includes(item.id))
+
+    if (selection.length === 0) {
+      throw new Error('Selectionnez au moins un travail prevu.')
+    }
+
+    for (const item of selection) {
+      if (item.tache) {
+        await modifierTacheChambre(item.tache.id, {
+          date_execution: dateExecution,
+          date_limite: dateLimite,
+          date_realisation: null,
+          id_executant: idsExecutants[0] || null,
+          id_executants: idsExecutants,
+          urgence,
+          commentaire: commentaire.trim() || item.tache.commentaire,
+        })
+      } else if (item.mouvement) {
+        await creerTacheDepuisMouvement(item.mouvement)
+      }
+    }
+
+    toast.success(`${selection.length} travail(aux) prevu(s) programme(s).`)
+  }
+
+  async function programmerMenagesManuels() {
+    if (!typeMenageManuelSelectionne) {
+      throw new Error('Choisissez un type de menage.')
+    }
+
+    if (chambresMenageManuel.length === 0) {
+      throw new Error('Selectionnez au moins une chambre.')
+    }
+
+    for (const chambre of chambresMenageManuel) {
+      await creerTacheChambre({
+        id_planning_chambre: null,
+        id_lieu: chambre.id,
+        id_type_mouvement: typeMenageManuelSelectionne.id,
+        date_mouvement: dateExecution,
+        date_initiale: dateExecution,
+        date_execution: dateExecution,
+        date_limite: dateExecution,
+        id_executant: idsExecutants[0] || null,
+        id_executants: idsExecutants,
+        id_etat: etatAffecte.id,
+        points: typeMenageManuelSelectionne.points,
+        urgence,
+        commentaire: commentaire.trim() || null,
+        type_generation: 'manuel',
+      })
+    }
+
+    toast.success(`${chambresMenageManuel.length} menage(s) programme(s).`)
+  }
+
+  async function programmerTachesPeriodiques() {
+    const etatAFaire = etats.find((etat) => etat.nom === 'A_FAIRE') || etats.find((etat) => etat.nom === 'AFFECTE') || etats[0]
+
+    if (!etatAFaire) {
+      throw new Error("L'etat A faire est introuvable.")
+    }
+
+    if (tachesPeriodiquesSelectionnees.length === 0) {
+      throw new Error('Selectionnez au moins une tache periodique.')
+    }
+
+    await Promise.all(tachesPeriodiquesSelectionnees.map((item) => modifierPlanningTachePeriodique(item.id, {
+      id_executant: idsExecutants[0] || null,
+      date_execution: dateExecution,
+      id_etat: etatAFaire.id,
+    })))
+
+    toast.success(`${tachesPeriodiquesSelectionnees.length} tache(s) periodique(s) programmee(s).`)
+  }
+
+  async function creerTacheDepuisMouvement(mouvement: PlanningChambre) {
+    const payload: TacheChambrePayload = {
+      id_planning_chambre: mouvement.id,
+      id_lieu: mouvement.id_lieu,
+      id_type_mouvement: mouvement.id_type_mouvement,
+      date_mouvement: mouvement.date,
+      date_initiale: mouvement.date,
+      date_execution: dateExecution,
+      date_limite: dateLimite,
+      id_executant: idsExecutants[0] || null,
+      id_executants: idsExecutants,
+      id_etat: etatAffecte.id,
+      points: mouvement.type_mouvement?.points || 0,
+      urgence,
+      commentaire: commentaire.trim() || null,
+    }
+
+    await creerTacheChambre(payload)
+  }
+
+  function reinitialiserProgrammation() {
+    setIdMouvement('')
+    setIdsTravauxPrevus([])
+    setIdTypeMenageManuel('')
+    setIdsChambresMenageManuel([])
+    setIdsTachesPeriodiquesProgrammation([])
+    setIdsExecutants([])
+    setCommentaire('')
   }
 
   async function creerDepuisMouvement() {
@@ -567,7 +808,9 @@ export function TravailChambres() {
     const idsProposes = idsExecutantsPlanningChambre(mouvement)
     const executantPropose = idsProposes[0] || executantDefautPourLieu(mouvement.lieu) || ''
 
+    setModeProgrammation('prevus')
     setIdMouvement(mouvement.id)
+    setIdsTravauxPrevus([`mouvement-${mouvement.id}`])
     setDateLimite(mouvement.date)
     setDateExecution(prochaineDateExecution)
     setIdsExecutants(idsProposes.length > 0 ? idsProposes.filter((id) => estExecutantEnTravail(id, prochaineDateExecution)) : (estExecutantEnTravail(executantPropose, prochaineDateExecution) ? [executantPropose] : []))
@@ -928,23 +1171,139 @@ export function TravailChambres() {
               </button>
             </div>
 
-            <div className="space-y-3">
-              <Champ label="Travail a programmer">
-                <select value={idMouvement} onChange={(event) => setIdMouvement(event.target.value)} className={inputClass}>
-                  <option value="">Choisir</option>
-                  {mouvementsDisponibles.map((mouvement) => (
-                    <option key={mouvement.id} value={mouvement.id}>
-                      {libelleTravailChambre(mouvement.type_mouvement?.nom)} - {mouvement.lieu?.nom || 'Chambre'} - mouvement le {formatDate(mouvement.date)}
-                    </option>
-                  ))}
-                </select>
-              </Champ>
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-2 rounded-lg bg-slate-100 p-1">
+                {([
+                  ['prevus', 'Menages prevus'],
+                  ['autres', 'Autres menages'],
+                  ['periodiques', 'Taches periodiques'],
+                ] as Array<[ModeProgrammation, string]>).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setModeProgrammation(mode)}
+                    className={modeProgrammation === mode ? 'rounded-md bg-white px-2 py-2 text-xs font-semibold text-teal-800 shadow-sm sm:text-sm' : 'rounded-md px-2 py-2 text-xs font-semibold text-slate-600 hover:bg-white/70 sm:text-sm'}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
 
-              {mouvementSelectionne && (
-              <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
-                <p className="font-semibold text-slate-900">{mouvementSelectionne.lieu?.nom}</p>
-                <p>{libelleTravailChambre(mouvementSelectionne.type_mouvement?.nom)} - {mouvementSelectionne.type_mouvement?.points || 0} point(s)</p>
-                <p>Mouvement hotelier : {mouvementSelectionne.type_mouvement?.nom || '-'} le {formatDate(mouvementSelectionne.date)}</p>
+              {modeProgrammation === 'prevus' && (
+                <div className="rounded-lg border border-slate-200">
+                  <div className="flex items-center justify-between border-b border-slate-200 p-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Menages deja prevus par le planning</p>
+                      <p className="text-xs text-slate-500">Arrivees, departs et recouches. Les taches existantes sont modifiees, pas recreees.</p>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={travauxPrevusProgrammables.length > 0 && travauxPrevusProgrammables.every((item) => idsTravauxPrevus.includes(item.id))}
+                        onChange={(event) => setIdsTravauxPrevus(event.target.checked ? travauxPrevusProgrammables.map((item) => item.id) : [])}
+                        className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                      />
+                      Tout
+                    </label>
+                  </div>
+                  <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto">
+                    {travauxPrevusProgrammables.length === 0 && <p className="p-4 text-center text-sm text-slate-500">Aucun travail prevu a programmer.</p>}
+                    {travauxPrevusProgrammables.map((item) => (
+                      <label key={item.id} className="flex items-start gap-3 p-3 text-sm hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={idsTravauxPrevus.includes(item.id)}
+                          onChange={(event) => setIdsTravauxPrevus((selection) => event.target.checked ? Array.from(new Set([...selection, item.id])) : selection.filter((id) => id !== item.id))}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-slate-900">{libelleTravailChambre(item.type?.nom)} - {item.lieu?.nom || 'Chambre'}</span>
+                          <span className="block text-xs text-slate-500">
+                            {item.planifie ? 'Deja programme' : 'A creer'} - mouvement le {formatDate(item.dateSource)} - {item.points} pt(s)
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {modeProgrammation === 'autres' && (
+                <div className="space-y-3">
+                  <Champ label="Type de menage">
+                    <select value={idTypeMenageManuel} onChange={(event) => setIdTypeMenageManuel(event.target.value)} className={inputClass}>
+                      <option value="">Choisir</option>
+                      {typesMenageManuel.map((type) => (
+                        <option key={type.id} value={type.id}>{libelleTravailChambre(type.nom)} ({type.points} pt(s))</option>
+                      ))}
+                    </select>
+                  </Champ>
+                  <div className="rounded-lg border border-slate-200">
+                    <div className="flex items-center justify-between border-b border-slate-200 p-3">
+                      <p className="text-sm font-semibold text-slate-900">Chambres</p>
+                      <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={chambres.length > 0 && chambres.every((chambre) => idsChambresMenageManuel.includes(chambre.id))}
+                          onChange={(event) => setIdsChambresMenageManuel(event.target.checked ? chambres.map((chambre) => chambre.id) : [])}
+                          className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                        />
+                        Tout
+                      </label>
+                    </div>
+                    <div className="grid max-h-64 gap-1 overflow-y-auto p-2 sm:grid-cols-2">
+                      {chambres.map((chambre) => (
+                        <label key={chambre.id} className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-slate-50">
+                          <input
+                            type="checkbox"
+                            checked={idsChambresMenageManuel.includes(chambre.id)}
+                            onChange={(event) => setIdsChambresMenageManuel((selection) => event.target.checked ? Array.from(new Set([...selection, chambre.id])) : selection.filter((id) => id !== chambre.id))}
+                            className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                          />
+                          <span className="min-w-0 truncate">{chambre.nom} {chambre.batiment ? `(${chambre.batiment.nom})` : ''}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {modeProgrammation === 'periodiques' && (
+                <div className="rounded-lg border border-slate-200">
+                  <div className="flex items-center justify-between border-b border-slate-200 p-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Taches periodiques prevues</p>
+                      <p className="text-xs text-slate-500">La date d'execution peut etre differente de l'echeance. Ces taches restent dans leur suivi periodique.</p>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={tachesPeriodiquesProgrammables.length > 0 && tachesPeriodiquesProgrammables.every((item) => idsTachesPeriodiquesProgrammation.includes(item.id))}
+                        onChange={(event) => setIdsTachesPeriodiquesProgrammation(event.target.checked ? tachesPeriodiquesProgrammables.map((item) => item.id) : [])}
+                        className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                      />
+                      Tout
+                    </label>
+                  </div>
+                  <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto">
+                    {tachesPeriodiquesProgrammables.length === 0 && <p className="p-4 text-center text-sm text-slate-500">Aucune tache periodique chambre a programmer.</p>}
+                    {tachesPeriodiquesProgrammables.map((item) => (
+                      <label key={item.id} className="flex items-start gap-3 p-3 text-sm hover:bg-slate-50">
+                        <input
+                          type="checkbox"
+                          checked={idsTachesPeriodiquesProgrammation.includes(item.id)}
+                          onChange={(event) => setIdsTachesPeriodiquesProgrammation((selection) => event.target.checked ? Array.from(new Set([...selection, item.id])) : selection.filter((id) => id !== item.id))}
+                          className="mt-1 h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-slate-900">{item.tache?.nom || 'Tache periodique'} - {item.lieu?.nom || 'Chambre'}</span>
+                          <span className="block text-xs text-slate-500">
+                            Echeance {formatDate(item.date_echeance)} - execution {formatDate(item.date_execution || item.date_echeance)} - sans points
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -952,9 +1311,11 @@ export function TravailChambres() {
                 <Champ label="Date execution">
                   <input type="date" value={dateExecution} onChange={(event) => setDateExecution(event.target.value)} className={inputClass} />
                 </Champ>
-                <Champ label="Date limite">
-                  <input type="date" value={dateLimite} onChange={(event) => setDateLimite(event.target.value)} className={inputClass} />
-                </Champ>
+                {modeProgrammation !== 'autres' && (
+                  <Champ label="Date limite">
+                    <input type="date" value={dateLimite} onChange={(event) => setDateLimite(event.target.value)} className={inputClass} />
+                  </Champ>
+                )}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -967,18 +1328,33 @@ export function TravailChambres() {
                   />
                 </Champ>
 
-                <Champ label="Urgence">
+                {modeProgrammation !== 'periodiques' && <Champ label="Urgence">
                   <select value={urgence} onChange={(event) => setUrgence(event.target.value as UrgenceTacheChambre)} className={inputClass}>
                     {urgences.map((item) => <option key={item} value={item}>{libelleUrgence(item)}</option>)}
                   </select>
-                </Champ>
+                </Champ>}
               </div>
 
-              <AlerteAffectation
-                validation={validationCreation}
-                suggestions={suggestionsCreation}
-                onChoisir={(executantId) => setIdsExecutants([executantId])}
-              />
+              {modeProgrammation !== 'periodiques' && (
+                <>
+                  <div className="rounded-md bg-slate-50 p-3 text-sm text-slate-600">
+                    <span className="font-semibold text-slate-900">Charge selection : </span>
+                    +{formatPoints(pointsProgrammation)} point(s)
+                    {idsExecutants.length > 0 && (
+                      <span> - apres affectation : {idsExecutants.map((id) => {
+                        const executant = executants.find((item) => item.id === id)
+                        const pointsApres = chargeExecutantJour(id, dateExecution) + pointsProgrammation / Math.max(idsExecutants.length, 1)
+                        return `${executant?.nom || 'Executant'} ${formatPoints(pointsApres)} pts`
+                      }).join(', ')}</span>
+                    )}
+                  </div>
+                  <AlerteAffectation
+                    validation={validationCreation}
+                    suggestions={suggestionsCreation}
+                    onChoisir={(executantId) => setIdsExecutants([executantId])}
+                  />
+                </>
+              )}
 
               <Champ label="Commentaire">
                 <textarea value={commentaire} onChange={(event) => setCommentaire(event.target.value)} className={textareaClass} />
@@ -986,7 +1362,7 @@ export function TravailChambres() {
 
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => setFormulaireOuvert(false)} className={secondaryButton}>Annuler</button>
-                <button type="button" disabled={soumission || !idMouvement} onClick={() => void creerDepuisMouvement()} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60">
+                <button type="button" disabled={soumission || !peutValiderProgrammation} onClick={() => void validerProgrammation()} className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-teal-700 px-4 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60">
                   {soumission ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   Planifier
                 </button>
@@ -1299,7 +1675,25 @@ function urgenceDepuisMouvement(dateMouvement: string, aujourdHui: string): Urge
 
 function estMouvementProgrammable(type?: string | null) {
   const nom = type?.toUpperCase() || ''
-  return nom.includes('DEPART') || nom.includes('ARRIVEE')
+  return nom.includes('DEPART') || nom.includes('ARRIVEE') || nom.includes('RECOUCHE')
+}
+
+function estTypeMenageManuel(type?: string | null) {
+  const nom = normaliserTexte(type || '')
+  if (!nom) return false
+  if (nom.includes('arrivee') || nom.includes('depart') || nom.includes('recouche')) return false
+  return [
+    'menage',
+    'vitres',
+    'rideaux',
+    'lit',
+    'salle de bain',
+    'poussiere',
+    'balcon',
+    'terrasse',
+    'remise',
+    'inoccupation',
+  ].some((mot) => nom.includes(mot))
 }
 
 function executantDefautPourLieu(lieu?: Lieu | null) {

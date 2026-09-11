@@ -82,7 +82,10 @@ export function usePlanningChambre(dateDebut: string, dateFin?: string) {
       setEtats(etatsResultat)
       setPlanning(planningResultat)
       setPlanningExecutants(planningExecutantsResultat)
-      setPlanningTaches(planningTachesResultat.filter((tache) => tache.date_echeance >= dateDebut && (!dateFin || tache.date_echeance <= dateFin)))
+      setPlanningTaches(planningTachesResultat.filter((tache) => {
+        const dateReference = tache.date_execution || tache.date_echeance
+        return dateReference >= dateDebut && (!dateFin || dateReference <= dateFin)
+      }))
       setHistoriqueTaches(historiqueTachesResultat.filter((tache) => tache.date_realisation >= dateDebut && (!dateFin || tache.date_realisation <= dateFin)))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Planning chambres impossible a charger.')

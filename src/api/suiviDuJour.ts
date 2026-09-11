@@ -9,6 +9,7 @@ import { listerEtatsMouvement, type EtatMouvement } from './planningChambre'
 import {
   listerPlanningTachesPeriodiques,
   modifierPlanningTachePeriodique,
+  realiserTachePeriodique,
   type TachePeriodiquePlanning,
 } from './tachesPeriodiques'
 import {
@@ -60,7 +61,11 @@ export async function chargerSuiviDuJour(date: string): Promise<SuiviDuJour> {
   const executantsParId = new Map(executants.map((executant) => [executant.id, executant]))
   const femmesChambreIds = new Set(executants.filter(estFemmeDeChambre).map((executant) => executant.id))
   const maintenancierIds = new Set(executants.filter(estMaintenancier).map((executant) => executant.id))
-  const periodiquesJour = planningsPeriodiques.filter((planning) => planning.est_actif && !planning.date_realisation && planning.date_echeance <= date)
+  const periodiquesJour = planningsPeriodiques.filter((planning) => {
+    if (!planning.est_actif || planning.date_realisation) return false
+    const dateExecution = planning.date_execution || planning.date_echeance
+    return dateExecution === date || (!planning.id_executant && planning.date_echeance <= date)
+  })
   const interventionsJour = interventions
     .filter((intervention) => intervention.est_actif)
     .filter((intervention) => !estEtatFerme(intervention.etat?.nom))
@@ -113,7 +118,7 @@ export async function chargerSuiviDuJour(date: string): Promise<SuiviDuJour> {
         lieu: planning.lieu?.nom || 'Lieu',
         action: planning.tache?.nom || 'Tache periodique',
         statut: planning.etat?.nom || 'A_FAIRE',
-        date: planning.date_echeance,
+        date: planning.date_execution || planning.date_echeance,
         planning,
       })
       return
@@ -179,8 +184,27 @@ export async function chargerSuiviDuJour(date: string): Promise<SuiviDuJour> {
 }
 
 export async function changerEtatSuiviDuJour(item: ItemFemmeChambre, idEtat: string) {
+  const etats = await listerEtatsMouvement()
+  const etat = etats.find((element) => element.id === idEtat)
+
   if (item.source === 'chambre') {
-    return modifierTacheChambre(item.tache.id, { id_etat: idEtat })
+    return modifierTacheChambre(item.tache.id, {
+      id_etat: idEtat,
+      date_realisation: etat?.nom === 'TERMINE' ? item.tache.date_execution : null,
+    })
+  }
+
+  if (etat?.nom === 'TERMINE') {
+    const etatAFaire = etats.find((element) => element.nom === 'A_FAIRE') || etats.find((element) => element.nom === 'AFFECTE')
+    if (!etatAFaire) throw new Error("L'etat A faire est introuvable.")
+
+    return realiserTachePeriodique(item.planning, {
+      id_executant: item.planning.id_executant,
+      date_realisation: formatDateInput(new Date()),
+      duree_minutes: null,
+      commentaire: null,
+      idEtatAFaire: etatAFaire.id,
+    })
   }
 
   return modifierPlanningTachePeriodique(item.planning.id, { id_etat: idEtat })
@@ -255,4 +279,11 @@ function pointsChambreSuivi(type: string | null | undefined, pointsFallback: num
   if (nom === 'ARRIVEE') return 2
   if (nom === 'DEPART') return 3
   return pointsFallback || 0
+}
+
+function formatDateInput(date: Date) {
+  const annee = date.getFullYear()
+  const mois = String(date.getMonth() + 1).padStart(2, '0')
+  const jour = String(date.getDate()).padStart(2, '0')
+  return `${annee}-${mois}-${jour}`
 }

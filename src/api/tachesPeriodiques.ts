@@ -33,6 +33,7 @@ export type TachePeriodiquePlanning = {
   id_executant: string | null
   date_realisation: string | null
   date_echeance: string
+  date_execution: string | null
   date_echeance_originale: string | null
   id_etat: string
   est_reportee: boolean
@@ -50,6 +51,7 @@ export type TachePeriodiquePlanningPayload = {
   id_executant: string | null
   date_realisation: string | null
   date_echeance: string
+  date_execution?: string | null
   date_echeance_originale: string | null
   id_etat: string
   est_reportee: boolean
@@ -74,7 +76,7 @@ export type TachePeriodiqueHistorique = {
 const selectTache =
   'id,nom,code,description,id_categorie_lieu,frequence_jours,priorite,niveau_lourdeur,nature,points_estimes,est_reportable,delai_alerte_jours,est_actif,categorie_lieu:categories_lieu(id,code,nom)'
 const selectPlanning =
-  'id,id_tache,id_lieu,id_executant,date_realisation,date_echeance,date_echeance_originale,id_etat,est_reportee,motif_report,est_actif,tache:tache_periodique(id,nom,code,description,id_categorie_lieu,frequence_jours,priorite,niveau_lourdeur,nature,points_estimes,est_reportable,delai_alerte_jours,est_actif,categorie_lieu:categories_lieu(id,code,nom)),lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),etat:etat_mouvement(id,nom)'
+  'id,id_tache,id_lieu,id_executant,date_realisation,date_echeance,date_execution,date_echeance_originale,id_etat,est_reportee,motif_report,est_actif,tache:tache_periodique(id,nom,code,description,id_categorie_lieu,frequence_jours,priorite,niveau_lourdeur,nature,points_estimes,est_reportable,delai_alerte_jours,est_actif,categorie_lieu:categories_lieu(id,code,nom)),lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),etat:etat_mouvement(id,nom)'
 const selectHistorique =
   'id,id_tache,id_lieu,id_executant,date_realisation,duree_minutes,commentaire,created_at,tache:tache_periodique(id,nom,code,description,id_categorie_lieu,frequence_jours,priorite,niveau_lourdeur,nature,points_estimes,est_reportable,delai_alerte_jours,est_actif,categorie_lieu:categories_lieu(id,code,nom)),lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
 
@@ -114,6 +116,7 @@ export async function listerPlanningTachesPeriodiques() {
     .from('tache_periodique_planning')
     .select(selectPlanning)
     .eq('est_actif', true)
+    .order('date_execution', { ascending: true })
     .order('date_echeance', { ascending: true })
     .returns<TachePeriodiquePlanning[]>()
   if (error) throw error
@@ -183,6 +186,7 @@ export async function realiserTachePeriodique(
     id_executant: null,
     date_realisation: null,
     date_echeance: prochaineEcheance,
+    date_execution: prochaineEcheance,
     date_echeance_originale: prochaineEcheance,
     id_etat: payload.idEtatAFaire,
     est_reportee: false,
@@ -193,6 +197,7 @@ export async function realiserTachePeriodique(
 export async function reporterTachePeriodique(id: string, dateEcheance: string, motif: string) {
   return modifierPlanningTachePeriodique(id, {
     date_echeance: dateEcheance,
+    date_execution: dateEcheance,
     est_reportee: true,
     motif_report: motif,
   })

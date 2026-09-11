@@ -98,13 +98,13 @@ export function useTachesPeriodiques() {
   }, [planning])
 
   const propositions = useMemo(() => {
-    const charges = calculerChargesExecutants(planningChambres, planning, historique)
+    const charges = calculerChargesExecutants(planningChambres)
 
     return planning
       .filter((item) => item.est_actif && item.tache?.est_actif && !item.date_realisation && !item.id_executant)
       .flatMap((item) => {
         const classification = classifications.get(item.id) || classifierTache(item.date_echeance, item.tache?.delai_alerte_jours ?? 3)
-        const dateAffectation = item.date_echeance < aujourdHui ? aujourdHui : item.date_echeance
+        const dateAffectation = item.date_execution || (item.date_echeance < aujourdHui ? aujourdHui : item.date_echeance)
         const lieuDisponible = estLieuDisponible(item.lieu, dateAffectation, planningChambres)
         const candidats = executants
           .filter((executant) => estExecutantEnTravail(executant.id, dateAffectation, planningExecutants))
@@ -135,8 +135,8 @@ export function useTachesPeriodiques() {
           pointsLibres: meilleurCandidat.pointsLibres,
           charge: meilleurCandidat.charge,
           capacite: meilleurCandidat.capacite,
-          pointsApres: meilleurCandidat.charge + (item.tache?.points_estimes || 0),
-          surcharge: meilleurCandidat.capacite !== null && meilleurCandidat.charge + (item.tache?.points_estimes || 0) > meilleurCandidat.capacite,
+          pointsApres: meilleurCandidat.charge,
+          surcharge: false,
           lieuDisponible,
           score: scoreTache(item, classification),
         }]
@@ -200,29 +200,13 @@ function estExecutantEnTravail(idExecutant: string, date: string, planningExecut
   )
 }
 
-function calculerChargesExecutants(
-  planningChambres: PlanningChambre[],
-  planningTaches: TachePeriodiquePlanning[],
-  historiqueTaches: TachePeriodiqueHistorique[],
-) {
+function calculerChargesExecutants(planningChambres: PlanningChambre[]) {
   const map = new Map<string, number>()
 
   planningChambres.forEach((mouvement) => {
     if (!mouvement.id_executant) return
     const cle = `${mouvement.id_executant}-${mouvement.date}`
     map.set(cle, (map.get(cle) || 0) + (mouvement.type_mouvement?.points || 0))
-  })
-
-  planningTaches.forEach((tache) => {
-    if (!tache.id_executant || !tache.est_actif || tache.date_realisation || tache.etat?.nom === 'ANNULEE') return
-    const cle = `${tache.id_executant}-${tache.date_echeance}`
-    map.set(cle, (map.get(cle) || 0) + (tache.tache?.points_estimes || 0))
-  })
-
-  historiqueTaches.forEach((tache) => {
-    if (!tache.id_executant) return
-    const cle = `${tache.id_executant}-${tache.date_realisation}`
-    map.set(cle, (map.get(cle) || 0) + (tache.tache?.points_estimes || 0))
   })
 
   return map
