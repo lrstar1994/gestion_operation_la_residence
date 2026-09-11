@@ -43,6 +43,8 @@ type ItemPlanningTravail = {
   executants: Array<{ id: string; id_executant: string; executant?: Executant | null }>
   urgence: UrgenceTacheChambre
   dateMouvement: string
+  dateInitiale: string | null
+  estDeplacee: boolean
   tache: TacheChambre | null
   mouvement: PlanningChambre | null
 }
@@ -224,6 +226,8 @@ export function TravailChambres() {
         executants: tache.executants || [],
         urgence: tache.urgence,
         dateMouvement: tache.date_mouvement,
+        dateInitiale: tache.date_initiale,
+        estDeplacee: tache.est_deplacee,
         tache,
         mouvement: null as PlanningChambre | null,
       })),
@@ -245,6 +249,8 @@ export function TravailChambres() {
         executants: mouvement.executants || [],
         urgence: urgenceDepuisMouvement(mouvement.date, aujourdHui),
         dateMouvement: mouvement.date,
+        dateInitiale: mouvement.date,
+        estDeplacee: false,
         tache: null as TacheChambre | null,
         mouvement,
       })),
@@ -507,6 +513,7 @@ export function TravailChambres() {
         id_lieu: mouvementSelectionne.id_lieu,
         id_type_mouvement: mouvementSelectionne.id_type_mouvement,
         date_mouvement: mouvementSelectionne.date,
+        date_initiale: mouvementSelectionne.date,
         date_execution: dateExecution,
         date_limite: dateLimite,
         id_executant: idsExecutants[0] || null,
@@ -593,9 +600,11 @@ export function TravailChambres() {
       toast.warning(validation.message || 'Affectation en surcharge.')
     }
 
+    const etatSelectionne = etats.find((etat) => etat.id === modalEtat)
     await mettreAJourTache(modalItem.tache.id, {
       date_execution: modalDateExecution,
       date_limite: modalDateLimite,
+      date_realisation: etatSelectionne?.nom === 'TERMINE' ? modalDateExecution : null,
       id_executant: modalExecutants[0] || null,
       id_executants: modalExecutants,
       id_etat: modalEtat,
@@ -995,6 +1004,11 @@ export function TravailChambres() {
               <p className="mt-1 text-sm text-slate-500">
                 {libelleTravailChambre(modalItem.type?.nom)} - mouvement hotelier le {formatDate(modalItem.dateMouvement)}
               </p>
+              {modalItem.estDeplacee && modalItem.dateInitiale && (
+                <p className="mt-1 text-xs font-medium text-amber-700">
+                  Initialement prevu le {formatDate(modalItem.dateInitiale)}
+                </p>
+              )}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">

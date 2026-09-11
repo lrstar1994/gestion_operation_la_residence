@@ -20,7 +20,7 @@ export type HistoriqueChambre = {
 }
 
 const selectTacheChambreHistorique =
-  'id,id_lieu,date_execution,type_mouvement(id,nom),etat:etat_mouvement(id,nom),lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom))'
+  'id,id_lieu,date_execution,date_realisation,type_mouvement(id,nom),etat:etat_mouvement(id,nom),lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom))'
 
 const selectInterventionHistorique =
   'id,titre,travail_a_faire,id_lieu,date_intervention,date_fin,id_etat,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom)),type_intervention:type_intervention_maintenance(id,nom,est_actif),etat:etat_mouvement(id,nom)'
@@ -51,9 +51,8 @@ async function listerActionsMenage(dateDebut: string, dateFin: string) {
   const { data, error } = await supabase
     .from('tache_chambre')
     .select(selectTacheChambreHistorique)
-    .gte('date_execution', dateDebut)
-    .lte('date_execution', dateFin)
-    .returns<Array<Pick<TacheChambre, 'id' | 'id_lieu' | 'date_execution' | 'type_mouvement' | 'etat' | 'lieu'>>>()
+    .or(`and(date_realisation.gte.${dateDebut},date_realisation.lte.${dateFin}),and(date_realisation.is.null,date_execution.gte.${dateDebut},date_execution.lte.${dateFin})`)
+    .returns<Array<Pick<TacheChambre, 'id' | 'id_lieu' | 'date_execution' | 'date_realisation' | 'type_mouvement' | 'etat' | 'lieu'>>>()
 
   if (error) throw error
 
@@ -62,7 +61,7 @@ async function listerActionsMenage(dateDebut: string, dateFin: string) {
     .filter((item) => estEtatRealise(item.etat?.nom))
     .map<ActionHistoriqueChambre>((item) => ({
       id: `menage-${item.id}`,
-      date: item.date_execution,
+      date: item.date_realisation || item.date_execution,
       id_lieu: item.id_lieu,
       type: 'menage',
       libelle: libelleCourt(item.type_mouvement?.nom || 'Menage'),

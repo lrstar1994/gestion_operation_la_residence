@@ -2,7 +2,9 @@ import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'reac
 import { AlertTriangle, BedDouble, CalendarDays, ChevronLeft, ChevronRight, Maximize2, Minimize2, Save, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Lieu } from '../api/lieux'
-import { idsExecutantsPlanningChambre, libelleExecutantsPlanningChambre, type ChargeExecutant, type PlanningChambre, type PlanningChambrePayload } from '../api/planningChambre'
+import { idsExecutantsPlanningChambre, libelleExecutantsPlanningChambre, type ChargeExecutant, type PlanningChambre, type PlanningChambrePayload, type TypeMouvement } from '../api/planningChambre'
+import { creerSejourChambre } from '../api/sejoursChambres'
+import { creerTacheChambre, type TacheChambrePayload } from '../api/tachesChambres'
 import { useAuth } from '../hooks/useAuth'
 import { type SuggestionAffectation, usePlanningChambre } from '../hooks/usePlanningChambre'
 
@@ -18,6 +20,7 @@ type ReaffectationEnAttente = {
 }
 
 type ModeSaisie = 'mouvement' | 'sejour'
+type TypeSejourFormulaire = 'normal' | 'long_sejour'
 
 const joursLabels = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
 
@@ -32,6 +35,10 @@ export function PlanningChambres() {
   const [executantsLot, setExecutantsLot] = useState<string[]>([])
   const [remplacer, setRemplacer] = useState(false)
   const [modeSaisie, setModeSaisie] = useState<ModeSaisie>('mouvement')
+  const [typeSejourFormulaire, setTypeSejourFormulaire] = useState<TypeSejourFormulaire>('normal')
+  const [frequenceLongSejour, setFrequenceLongSejour] = useState<1 | 2>(1)
+  const [jourMenageLongSejour1, setJourMenageLongSejour1] = useState('2')
+  const [jourMenageLongSejour2, setJourMenageLongSejour2] = useState('5')
   const [suggestions, setSuggestions] = useState<SuggestionAffectation[]>([])
   const [payloadsEnAttente, setPayloadsEnAttente] = useState<PlanningChambrePayload[]>([])
   const [reaffectationsEnAttente, setReaffectationsEnAttente] = useState<ReaffectationEnAttente[]>([])
@@ -174,11 +181,9 @@ export function PlanningChambres() {
     const typeDepart = trouverTypeMouvement('DEPART')
     const typeRecouche = trouverTypeMouvement('RECOUCHE')
 
-    if (!typeArrivee || !typeDepart || !typeRecouche) return []
+    if (!typeArrivee || !typeDepart || (typeSejourFormulaire === 'normal' && !typeRecouche)) return []
 
-    return chambresSelectionnees
-      .map((idChambre) => chambres.find((chambre) => chambre.id === idChambre))
-      .filter(Boolean)
+    return chambresSelectionneesListe()
       .flatMap((chambre) => {
         const dates = datesEntre(dateDebutSejour, dateFinSejour)
 
@@ -186,15 +191,15 @@ export function PlanningChambres() {
           const payloads: PlanningChambrePayload[] = []
 
           if (date === dateDebutSejour) {
-            payloads.push(mouvementPayload(chambre!, date, typeArrivee.id, executantsLot))
+            payloads.push(mouvementPayload(chambre, date, typeArrivee.id, executantsLot))
           }
 
-          if (date > dateDebutSejour && date < dateFinSejour) {
-            payloads.push(mouvementPayload(chambre!, date, typeRecouche.id, executantsLot))
+          if (typeSejourFormulaire === 'normal' && date > dateDebutSejour && date < dateFinSejour) {
+            payloads.push(mouvementPayload(chambre, date, typeRecouche!.id, executantsLot))
           }
 
           if (date === dateFinSejour) {
-            payloads.push(mouvementPayload(chambre!, date, typeDepart.id, executantsLot))
+            payloads.push(mouvementPayload(chambre, date, typeDepart.id, executantsLot))
           }
 
           return payloads
@@ -202,8 +207,18 @@ export function PlanningChambres() {
       })
   }
 
+  function chambresSelectionneesListe() {
+    return chambresSelectionnees
+      .map((idChambre) => chambres.find((chambre) => chambre.id === idChambre))
+      .filter((chambre): chambre is Lieu => Boolean(chambre))
+  }
+
   function trouverTypeMouvement(nom: string) {
     return typesMouvement.find((type) => type.nom.trim().toUpperCase() === nom)
+  }
+
+  function trouverTypeMenageLongSejour() {
+    return trouverTypeMouvement('MENAGE_LONG_SEJOUR') || trouverTypeMouvement('MENAGE') || trouverTypeMouvement('RECOUCHE')
   }
 
   async function appliquerPayloads(payloads: PlanningChambrePayload[]) {
@@ -247,8 +262,18 @@ export function PlanningChambres() {
       return
     }
 
-    if (modeSaisie === 'sejour' && (!trouverTypeMouvement('ARRIVEE') || !trouverTypeMouvement('DEPART') || !trouverTypeMouvement('RECOUCHE'))) {
+    if (modeSaisie === 'sejour' && typeSejourFormulaire === 'normal' && (!trouverTypeMouvement('ARRIVEE') || !trouverTypeMouvement('DEPART') || !trouverTypeMouvement('RECOUCHE'))) {
       toast.error('Les types ARRIVEE, DEPART et RECOUCHE doivent exister.')
+      return
+    }
+
+    if (modeSaisie === 'sejour' && typeSejourFormulaire === 'long_sejour' && (!trouverTypeMouvement('ARRIVEE') || !trouverTypeMouvement('DEPART') || !trouverTypeMenageLongSejour())) {
+      toast.error('Les types ARRIVEE, DEPART et MENAGE_LONG_SEJOUR doivent exister.')
+      return
+    }
+
+    if (modeSaisie === 'sejour' && typeSejourFormulaire === 'long_sejour' && frequenceLongSejour === 2 && jourMenageLongSejour1 === jourMenageLongSejour2) {
+      toast.error('Choisissez deux jours differents pour un long sejour avec deux menages par semaine.')
       return
     }
 
@@ -269,7 +294,94 @@ export function PlanningChambres() {
       return
     }
 
+    if (modeSaisie === 'sejour' && typeSejourFormulaire === 'long_sejour') {
+      await appliquerLongSejour()
+      return
+    }
+
     await appliquerPayloads(payloads)
+  }
+
+  async function appliquerLongSejour() {
+    const chambresSelection = chambresSelectionneesListe()
+    const typeArrivee = trouverTypeMouvement('ARRIVEE')
+    const typeDepart = trouverTypeMouvement('DEPART')
+    const typeMenage = trouverTypeMenageLongSejour()
+
+    if (!typeArrivee || !typeDepart || !typeMenage || !etatAffecte) return
+
+    setSoumission(true)
+
+    try {
+      let mouvementsCrees = 0
+      let menagesCrees = 0
+
+      for (const chambre of chambresSelection) {
+        const sejour = await creerSejourChambre({
+          id_lieu: chambre.id,
+          date_debut: dateDebutSejour,
+          date_fin: dateFinSejour,
+          type_sejour: 'long_sejour',
+          frequence_menage_semaine: frequenceLongSejour,
+          jour_menage_1: Number(jourMenageLongSejour1),
+          jour_menage_2: frequenceLongSejour === 2 ? Number(jourMenageLongSejour2) : null,
+        })
+
+        const payloadsMouvements: PlanningChambrePayload[] = [
+          { ...mouvementPayload(chambre, dateDebutSejour, typeArrivee.id, executantsLot), id_sejour_chambre: sejour.id },
+          { ...mouvementPayload(chambre, dateFinSejour, typeDepart.id, executantsLot), id_sejour_chambre: sejour.id },
+        ]
+
+        const resultat = await appliquerLot(payloadsMouvements, remplacer)
+        mouvementsCrees += resultat.sauvegardes.length
+        menagesCrees += await creerTachesLongSejour(chambre, sejour.id, typeMenage)
+      }
+
+      setPayloadsEnAttente([])
+      setReaffectationsEnAttente([])
+      toast.success(`${mouvementsCrees} mouvement(s) hotelier(s) et ${menagesCrees} menage(s) long sejour crees.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Creation du long sejour impossible.')
+    } finally {
+      setSoumission(false)
+    }
+  }
+
+  async function creerTachesLongSejour(chambre: Lieu, idSejour: string, typeMenage: TypeMouvement) {
+    const datesMenage = datesMenageLongSejour()
+    const payloads: TacheChambrePayload[] = datesMenage.map((date) => ({
+      id_planning_chambre: null,
+      id_sejour_chambre: idSejour,
+      id_lieu: chambre.id,
+      id_type_mouvement: typeMenage.id,
+      date_mouvement: date,
+      date_initiale: date,
+      date_execution: date,
+      date_limite: finSemaineOuSejour(date, dateFinSejour),
+      id_executant: executantsLot[0] || null,
+      id_executants: executantsLot,
+      id_etat: etatAffecte.id,
+      points: typeMenage.points,
+      urgence: date <= aujourdHui ? 'haute' : 'normale',
+      commentaire: 'Menage long sejour',
+      type_generation: 'long_sejour',
+    }))
+
+    for (const payload of payloads) {
+      await creerTacheChambre(payload)
+    }
+
+    return payloads.length
+  }
+
+  function datesMenageLongSejour() {
+    const jours = frequenceLongSejour === 2
+      ? [Number(jourMenageLongSejour1), Number(jourMenageLongSejour2)]
+      : [Number(jourMenageLongSejour1)]
+
+    return datesEntre(dateDebutSejour, dateFinSejour)
+      .filter((date) => date > dateDebutSejour && date < dateFinSejour)
+      .filter((date) => jours.includes(new Date(`${date}T00:00:00`).getDay()))
   }
 
   function appliquerSuggestion(payload: PlanningChambrePayload, idExecutant: string) {
@@ -707,7 +819,17 @@ export function PlanningChambres() {
               {modeSaisie === 'sejour' && (
                 <div className="space-y-4">
                   <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 text-sm text-teal-900">
-                    Arrivee a la date debut, depart a la date fin, recouches entre les deux dates.
+                    {typeSejourFormulaire === 'long_sejour'
+                      ? 'Long sejour : arrivee et depart restent dans le planning chambres. Les menages sont crees selon les jours habituels dans le travail chambres.'
+                      : 'Sejour normal : arrivee a la date debut, depart a la date fin, recouches entre les deux dates.'}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+                    <button type="button" onClick={() => setTypeSejourFormulaire('normal')} className={typeSejourFormulaire === 'normal' ? 'rounded-md bg-white px-3 py-2 text-sm font-semibold text-teal-800 shadow-sm' : 'rounded-md px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-white/70'}>
+                      Normal
+                    </button>
+                    <button type="button" onClick={() => setTypeSejourFormulaire('long_sejour')} className={typeSejourFormulaire === 'long_sejour' ? 'rounded-md bg-white px-3 py-2 text-sm font-semibold text-teal-800 shadow-sm' : 'rounded-md px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-white/70'}>
+                      Long sejour
+                    </button>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block">
@@ -719,13 +841,44 @@ export function PlanningChambres() {
                       <input type="date" value={dateFinSejour} onChange={(event) => setDateFinSejour(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />
                     </label>
                   </div>
+                  {typeSejourFormulaire === 'long_sejour' && (
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <p className="mb-3 text-sm font-semibold text-slate-900">Rythme de menage long sejour</p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="mb-1 block text-sm font-medium text-slate-700">Frequence</span>
+                          <select value={frequenceLongSejour} onChange={(event) => setFrequenceLongSejour(Number(event.target.value) as 1 | 2)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
+                            <option value={1}>1 fois par semaine</option>
+                            <option value={2}>2 fois par semaine</option>
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-sm font-medium text-slate-700">Jour habituel</span>
+                          <select value={jourMenageLongSejour1} onChange={(event) => setJourMenageLongSejour1(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
+                            {joursLabels.map((jour, index) => <option key={jour} value={index}>{nomJourComplet(index)}</option>)}
+                          </select>
+                        </label>
+                        {frequenceLongSejour === 2 && (
+                          <label className="block sm:col-start-2">
+                            <span className="mb-1 block text-sm font-medium text-slate-700">Deuxieme jour</span>
+                            <select value={jourMenageLongSejour2} onChange={(event) => setJourMenageLongSejour2(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
+                              {joursLabels.map((jour, index) => <option key={jour} value={index}>{nomJourComplet(index)}</option>)}
+                            </select>
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <ApercuSejour
                     dateDebut={dateDebutSejour}
                     dateFin={dateFinSejour}
                     chambres={chambresSelectionnees.length}
+                    typeSejour={typeSejourFormulaire}
+                    datesMenageLongSejour={typeSejourFormulaire === 'long_sejour' ? datesMenageLongSejour() : []}
                     typeArrivee={trouverTypeMouvement('ARRIVEE')?.points ?? null}
                     typeRecouche={trouverTypeMouvement('RECOUCHE')?.points ?? null}
                     typeDepart={trouverTypeMouvement('DEPART')?.points ?? null}
+                    typeMenageLongSejour={trouverTypeMenageLongSejour()?.points ?? null}
                   />
                 </div>
               )}
@@ -932,16 +1085,22 @@ function ApercuSejour({
   dateDebut,
   dateFin,
   chambres,
+  typeSejour,
+  datesMenageLongSejour,
   typeArrivee,
   typeRecouche,
   typeDepart,
+  typeMenageLongSejour,
 }: {
   dateDebut: string
   dateFin: string
   chambres: number
+  typeSejour: TypeSejourFormulaire
+  datesMenageLongSejour: string[]
   typeArrivee: number | null
   typeRecouche: number | null
   typeDepart: number | null
+  typeMenageLongSejour: number | null
 }) {
   if (!dateDebut || !dateFin) return null
 
@@ -952,23 +1111,34 @@ function ApercuSejour({
   const dates = datesEntre(dateDebut, dateFin)
   const nbArrivees = 1
   const nbDeparts = 1
-  const nbRecouches = Math.max(0, dates.length - 2)
+  const nbRecouches = typeSejour === 'normal' ? Math.max(0, dates.length - 2) : 0
+  const nbMenagesLongSejour = typeSejour === 'long_sejour' ? datesMenageLongSejour.length : 0
   const nbMouvementsParChambre = nbArrivees + nbDeparts + nbRecouches
-  const pointsParChambre = (typeArrivee ?? 0) + (typeDepart ?? 0) + nbRecouches * (typeRecouche ?? 0)
-  const typesComplets = typeArrivee !== null && typeRecouche !== null && typeDepart !== null
+  const pointsParChambre = (typeArrivee ?? 0) + (typeDepart ?? 0) + nbRecouches * (typeRecouche ?? 0) + nbMenagesLongSejour * (typeMenageLongSejour ?? 0)
+  const typesComplets = typeArrivee !== null && typeDepart !== null && (typeSejour === 'normal' ? typeRecouche !== null : typeMenageLongSejour !== null)
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
       <p className="font-semibold text-slate-900">Apercu</p>
       <div className="mt-2 grid gap-2 text-slate-600">
         <span>{nbArrivees} arrivee - {formatDateCourte(dateDebut)}</span>
-        <span>{nbRecouches} recouche(s)</span>
+        {typeSejour === 'normal' ? (
+          <span>{nbRecouches} recouche(s)</span>
+        ) : (
+          <>
+            <span>0 recouche automatique</span>
+            <span>{nbMenagesLongSejour} menage(s) long sejour</span>
+            {datesMenageLongSejour.length > 0 && <span className="text-xs">Prevus: {datesMenageLongSejour.map(formatDateCourte).join(', ')}</span>}
+          </>
+        )}
         <span>{nbDeparts} depart - {formatDateCourte(dateFin)}</span>
-        <span className="font-semibold text-slate-800">{nbMouvementsParChambre * chambres} mouvement(s) maximum pour {chambres} chambre(s)</span>
+        <span className="font-semibold text-slate-800">
+          {nbMouvementsParChambre * chambres} mouvement(s) hotelier(s) pour {chambres} chambre(s)
+        </span>
         {typesComplets ? (
           <span className="text-teal-700">{pointsParChambre * chambres} pts estimes au total</span>
         ) : (
-          <span className="text-rose-700">Types ARRIVEE, RECOUCHE ou DEPART manquants.</span>
+          <span className="text-rose-700">Types de mouvement necessaires manquants.</span>
         )}
       </div>
     </div>
@@ -1193,6 +1363,18 @@ function datesEntre(dateDebut: string, dateFin: string) {
   }
 
   return dates
+}
+
+function finSemaineOuSejour(date: string, dateFinSejour: string) {
+  const courant = new Date(`${date}T00:00:00`)
+  const joursJusquaSamedi = (6 - courant.getDay() + 7) % 7
+  courant.setDate(courant.getDate() + joursJusquaSamedi)
+  const finSemaine = formatDateInput(courant)
+  return finSemaine > dateFinSejour ? dateFinSejour : finSemaine
+}
+
+function nomJourComplet(index: number) {
+  return ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][index] || 'Jour'
 }
 
 function formatDateCourte(date: string) {

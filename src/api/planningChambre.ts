@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase'
 import type { Executant } from './executants'
 import type { Lieu } from './lieux'
+import type { SejourChambre } from './sejoursChambres'
 import type { TachePeriodiqueHistorique, TachePeriodiquePlanning } from './tachesPeriodiques'
 
 export type TypeMouvement = {
@@ -18,6 +19,7 @@ export type EtatMouvement = {
 export type PlanningChambre = {
   id: string
   id_lieu: string
+  id_sejour_chambre: string | null
   date: string
   id_type_mouvement: string
   id_executant: string | null
@@ -28,11 +30,13 @@ export type PlanningChambre = {
   type_mouvement?: TypeMouvement | null
   etat?: EtatMouvement | null
   executant?: Executant | null
+  sejour_chambre?: SejourChambre | null
   executants?: Array<{ id: string; id_executant: string; executant?: Executant | null }>
 }
 
 export type PlanningChambrePayload = {
   id_lieu: string
+  id_sejour_chambre?: string | null
   date: string
   id_type_mouvement: string
   id_executant: string | null
@@ -82,7 +86,7 @@ export type ConflitPlanningChambre = {
 const selectTypeMouvement = 'id,nom,points,couleur'
 const selectEtatMouvement = 'id,nom'
 const selectPlanningChambre =
-  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),executants:planning_chambre_executant(id,id_executant,executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)))'
+  'id,id_lieu,id_sejour_chambre,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),sejour_chambre:id_sejour_chambre(id,id_lieu,date_debut,date_fin,type_sejour,frequence_menage_semaine,jour_menage_1,jour_menage_2,est_actif,created_at,updated_at),executants:planning_chambre_executant(id,id_executant,executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)))'
 const selectTemplate =
   'id,nom,description'
 const selectTemplateItem =

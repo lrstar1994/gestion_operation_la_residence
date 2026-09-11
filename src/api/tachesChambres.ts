@@ -2,17 +2,24 @@ import { supabase } from '../lib/supabase'
 import type { Executant } from './executants'
 import type { Lieu } from './lieux'
 import type { EtatMouvement, PlanningChambre, TypeMouvement } from './planningChambre'
+import type { SejourChambre } from './sejoursChambres'
 
 export type UrgenceTacheChambre = 'haute' | 'normale' | 'basse'
+export type TypeGenerationTacheChambre = 'planning' | 'long_sejour' | 'manuel'
 
 export type TacheChambre = {
   id: string
   id_planning_chambre: string | null
+  id_sejour_chambre: string | null
   id_lieu: string
   id_type_mouvement: string
   date_mouvement: string
+  date_initiale: string | null
   date_execution: string
   date_limite: string
+  date_realisation: string | null
+  est_deplacee: boolean
+  type_generation: TypeGenerationTacheChambre
   id_executant: string | null
   id_etat: string
   points: number
@@ -22,6 +29,7 @@ export type TacheChambre = {
   created_at: string
   updated_at: string
   planning_chambre?: PlanningChambre | null
+  sejour_chambre?: SejourChambre | null
   lieu?: Lieu | null
   type_mouvement?: TypeMouvement | null
   executant?: Executant | null
@@ -31,11 +39,16 @@ export type TacheChambre = {
 
 export type TacheChambrePayload = {
   id_planning_chambre: string | null
+  id_sejour_chambre?: string | null
   id_lieu: string
   id_type_mouvement: string
   date_mouvement: string
+  date_initiale?: string | null
   date_execution: string
   date_limite: string
+  date_realisation?: string | null
+  est_deplacee?: boolean
+  type_generation?: TypeGenerationTacheChambre
   id_executant: string | null
   id_executants?: string[]
   id_etat: string
@@ -46,8 +59,9 @@ export type TacheChambrePayload = {
 }
 
 const selectTacheChambre =
-  'id,id_planning_chambre,id_lieu,id_type_mouvement,date_mouvement,date_execution,date_limite,id_executant,id_etat,points,urgence,commentaire,motif_blocage,created_at,updated_at,' +
+  'id,id_planning_chambre,id_sejour_chambre,id_lieu,id_type_mouvement,date_mouvement,date_initiale,date_execution,date_limite,date_realisation,est_deplacee,type_generation,id_executant,id_etat,points,urgence,commentaire,motif_blocage,created_at,updated_at,' +
   'planning_chambre:id_planning_chambre(id,id_lieu,date,id_type_mouvement,id_executant,id_etat,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))),' +
+  'sejour_chambre:id_sejour_chambre(id,id_lieu,date_debut,date_fin,type_sejour,frequence_menage_semaine,jour_menage_1,jour_menage_2,est_actif,created_at,updated_at),' +
   'lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),' +
   'type_mouvement(id,nom,points,couleur),' +
   'executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),' +
