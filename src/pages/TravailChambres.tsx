@@ -102,6 +102,8 @@ export function TravailChambres() {
   const [chargement, setChargement] = useState(true)
   const [soumission, setSoumission] = useState(false)
   const [formulaireOuvert, setFormulaireOuvert] = useState(false)
+  const [itemGlisse, setItemGlisse] = useState<string | null>(null)
+  const [celluleSurvolee, setCelluleSurvolee] = useState<string | null>(null)
 
   const [idMouvement, setIdMouvement] = useState('')
   const [modeProgrammation, setModeProgrammation] = useState<ModeProgrammation>('prevus')
@@ -791,6 +793,47 @@ export function TravailChambres() {
     }
   }
 
+  async function deplacerTacheParGlisser(itemId: string, idLieuCible: string, nouvelleDate: string) {
+    const item = itemsPlanning.find((element) => element.id === itemId)
+    setCelluleSurvolee(null)
+    setItemGlisse(null)
+
+    if (!item) return
+
+    if (!item.tache) {
+      toast.error("Ce mouvement doit d'abord etre programme avant de pouvoir etre deplace.")
+      return
+    }
+
+    if (item.id_lieu !== idLieuCible) {
+      toast.error('Le glisser-deposer change seulement la date. Pour changer de chambre, modifie la fiche.')
+      return
+    }
+
+    if (item.date === nouvelleDate) return
+
+    if (item.tache.date_realisation || item.tache.etat?.nom === 'TERMINE') {
+      toast.error('Une tache terminee ne peut plus etre deplacee.')
+      return
+    }
+
+    setSoumission(true)
+    try {
+      const dateInitiale = item.tache.date_initiale || item.tache.date_mouvement
+      await modifierTacheChambre(item.tache.id, {
+        date_execution: nouvelleDate,
+        date_limite: nouvelleDate,
+        est_deplacee: nouvelleDate !== dateInitiale,
+      })
+      toast.success(`Travail deplace au ${formatDate(nouvelleDate)}.`)
+      await charger()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Deplacement impossible.')
+    } finally {
+      setSoumission(false)
+    }
+  }
+
   async function supprimer(id: string) {
     if (!window.confirm('Supprimer cette tache chambre ?')) return
     try {
@@ -1048,6 +1091,9 @@ export function TravailChambres() {
 
           <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 p-4">
+              <div className="mb-3 rounded-md bg-teal-50 px-3 py-2 text-sm text-teal-900">
+                Glisse une carte deja programmee vers une autre date de la meme chambre pour deplacer sa date d'execution.
+              </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[130px_130px_160px_170px_150px_1fr]">
                 <input type="date" value={dateDebut} onChange={(event) => setDateDebut(event.target.value)} className={inputClass} />
                 <input type="date" value={dateFin} onChange={(event) => setDateFin(event.target.value)} className={inputClass} />
@@ -1115,13 +1161,46 @@ export function TravailChambres() {
                             {datesPlanning.map((date) => {
                               const items = itemsParCellule.get(`${chambre.id}-${date}`) || []
                               return (
-                                <td key={`${chambre.id}-${date}`} className="min-w-36 border-r border-slate-100 p-2 align-top">
+                                <td
+                                  key={`${chambre.id}-${date}`}
+                                  onDragOver={(event) => {
+                                    if (!itemGlisse) return
+                                    event.preventDefault()
+                                    setCelluleSurvolee(`${chambre.id}-${date}`)
+                                  }}
+                                  onDragLeave={() => setCelluleSurvolee((cellule) => cellule === `${chambre.id}-${date}` ? null : cellule)}
+                                  onDrop={(event) => {
+                                    event.preventDefault()
+                                    const id = event.dataTransfer.getData('text/plain') || itemGlisse
+                                    if (id) void deplacerTacheParGlisser(id, chambre.id, date)
+                                  }}
+                                  className={celluleSurvolee === `${chambre.id}-${date}` ? 'min-w-36 border-r border-teal-200 bg-teal-50 p-2 align-top' : 'min-w-36 border-r border-slate-100 p-2 align-top'}
+                                >
                                   {items.length === 0 ? (
                                     <div className="flex min-h-20 items-center justify-center rounded-md bg-slate-50 text-slate-300">-</div>
                                   ) : (
                                     <div className="space-y-2">
                                       {items.map((item) => (
-                                        <div key={item.id} className="rounded-md border p-2" style={styleMouvement(item.type?.couleur)}>
+                                        <div
+                                          key={item.id}
+                                          draggable={Boolean(item.tache) && !item.tache.date_realisation && item.tache.etat?.nom !== 'TERMINE'}
+                                          onDragStart={(event) => {
+                                            if (!item.tache || item.tache.date_realisation || item.tache.etat?.nom === 'TERMINE') {
+                                              event.preventDefault()
+                                              return
+                                            }
+                                            event.dataTransfer.setData('text/plain', item.id)
+                                            event.dataTransfer.effectAllowed = 'move'
+                                            setItemGlisse(item.id)
+                                          }}
+                                          onDragEnd={() => {
+                                            setItemGlisse(null)
+                                            setCelluleSurvolee(null)
+                                          }}
+                                          className={itemGlisse === item.id ? 'cursor-grabbing rounded-md border p-2 opacity-60 ring-2 ring-teal-300' : item.tache && !item.tache.date_realisation && item.tache.etat?.nom !== 'TERMINE' ? 'cursor-grab rounded-md border p-2 transition hover:-translate-y-0.5 hover:shadow-sm' : 'rounded-md border p-2'}
+                                          style={styleMouvement(item.type?.couleur)}
+                                          title={item.tache ? 'Glisser pour changer la date execution' : 'Programme ce mouvement avant de pouvoir le deplacer'}
+                                        >
                                           <div className="mb-2 flex flex-wrap items-center gap-1">
                                             <Badge tone={item.planifie ? 'green' : 'orange'}>{item.planifie ? 'Programme' : 'Non programme'}</Badge>
                                             <Badge tone={couleurUrgence(item.urgence)}>{libelleUrgence(item.urgence)}</Badge>

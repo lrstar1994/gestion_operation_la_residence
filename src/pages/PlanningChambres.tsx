@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { AlertTriangle, BedDouble, CalendarDays, ChevronLeft, ChevronRight, Maximize2, Minimize2, Save, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
+import { AlertTriangle, BedDouble, CalendarDays, ChevronLeft, ChevronRight, Maximize2, Minimize2, Pencil, Save, Search, SlidersHorizontal, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Lieu } from '../api/lieux'
 import { idsExecutantsPlanningChambre, libelleExecutantsPlanningChambre, type ChargeExecutant, type PlanningChambre, type PlanningChambrePayload, type TypeMouvement } from '../api/planningChambre'
-import { creerSejourChambre } from '../api/sejoursChambres'
-import { creerTacheChambre, type TacheChambrePayload } from '../api/tachesChambres'
+import { creerSejourChambre, listerHistoriqueDeplacementsTachesChambres, listerSejoursChambres, modifierSejourChambre, type HistoriqueDeplacementTacheChambre, type SejourChambre } from '../api/sejoursChambres'
+import { creerTacheChambre, listerToutesTachesChambres, modifierTacheChambre, supprimerTacheChambre, type TacheChambre, type TacheChambrePayload } from '../api/tachesChambres'
 import { useAuth } from '../hooks/useAuth'
 import { type SuggestionAffectation, usePlanningChambre } from '../hooks/usePlanningChambre'
 
@@ -25,6 +25,7 @@ type TypeSejourFormulaire = 'normal' | 'long_sejour'
 const joursLabels = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
 
 export function PlanningChambres() {
+  const aujourdHui = formatDateInput(new Date())
   const [recherche, setRecherche] = useState('')
   const [batimentFiltre, setBatimentFiltre] = useState('tous')
   const [chambresSelectionnees, setChambresSelectionnees] = useState<string[]>([])
@@ -51,9 +52,20 @@ export function PlanningChambres() {
   const [lignesParPage, setLignesParPage] = useState(15)
   const [panneauSaisieOuvert, setPanneauSaisieOuvert] = useState(false)
   const [modeGrandAngle, setModeGrandAngle] = useState(false)
+  const [sejours, setSejours] = useState<SejourChambre[]>([])
+  const [tachesLongsSejours, setTachesLongsSejours] = useState<TacheChambre[]>([])
+  const [historiqueDeplacements, setHistoriqueDeplacements] = useState<HistoriqueDeplacementTacheChambre[]>([])
+  const [chargementSejours, setChargementSejours] = useState(false)
+  const [editionSejour, setEditionSejour] = useState<SejourChambre | null>(null)
+  const [formSejour, setFormSejour] = useState({
+    date_debut: aujourdHui,
+    date_fin: aujourdHui,
+    frequence_menage_semaine: 1 as 1 | 2,
+    jour_menage_1: 2,
+    jour_menage_2: 5 as number | null,
+    est_actif: true,
+  })
   const { estAdmin, peutAccederAuDomaine } = useAuth()
-
-  const aujourdHui = formatDateInput(new Date())
 
   const {
     chambres,
@@ -145,6 +157,35 @@ export function PlanningChambres() {
 
     return Array.from(map.values()).sort((a, b) => a.nom.localeCompare(b.nom))
   }, [chambresPage])
+  const longsSejours = useMemo(
+    () => sejours
+      .filter((sejour) => sejour.type_sejour === 'long_sejour')
+      .filter((sejour) => batimentFiltre === 'tous' || sejour.lieu?.id_batiment === batimentFiltre)
+      .sort((a, b) => (a.lieu?.batiment?.nom || '').localeCompare(b.lieu?.batiment?.nom || '') || (a.lieu?.numero || a.lieu?.nom || '').localeCompare(b.lieu?.numero || b.lieu?.nom || '')),
+    [batimentFiltre, sejours],
+  )
+  const controleLongsSejours = useMemo(
+    () => longsSejours
+      .filter((sejour) => sejour.est_actif)
+      .map((sejour) => {
+        const debutSemaine = debutSemaineISO(aujourdHui)
+        const finSemaine = ajouterJours(debutSemaine, 6)
+        const tachesLongSejour = tachesLongsSejours
+          .filter((tache) => tache.id_sejour_chambre === sejour.id)
+          .filter((tache) => datesSeChevauchent(tache.date_initiale || tache.date_mouvement, tache.date_execution, debutSemaine, finSemaine))
+        const prevues = tachesLongSejour.length
+        const realisees = tachesLongSejour.filter((tache) => Boolean(tache.date_realisation) || tache.etat?.nom === 'TERMINE').length
+        const deplacees = tachesLongSejour.filter((tache) => tache.est_deplacee).length
+        return {
+          sejour,
+          prevues,
+          realisees,
+          restantes: Math.max(0, prevues - realisees),
+          deplacees,
+        }
+      }),
+    [aujourdHui, longsSejours, tachesLongsSejours],
+  )
 
   useEffect(() => {
     setPagePlanning(1)
@@ -155,6 +196,30 @@ export function PlanningChambres() {
       setPagePlanning(totalPagesPlanning)
     }
   }, [pagePlanning, totalPagesPlanning])
+
+  async function chargerLongsSejours() {
+    setChargementSejours(true)
+
+    try {
+      const [sejoursResultat, tachesResultat, historiqueResultat] = await Promise.all([
+        listerSejoursChambres(),
+        listerToutesTachesChambres(),
+        listerHistoriqueDeplacementsTachesChambres(),
+      ])
+
+      setSejours(sejoursResultat)
+      setTachesLongsSejours(tachesResultat.filter((tache) => tache.type_generation === 'long_sejour'))
+      setHistoriqueDeplacements(historiqueResultat)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Longs sejours impossibles a charger.')
+    } finally {
+      setChargementSejours(false)
+    }
+  }
+
+  useEffect(() => {
+    void chargerLongsSejours()
+  }, [])
 
   function basculerChambre(id: string, coche: boolean) {
     setChambresSelectionnees((selection) => (coche ? Array.from(new Set([...selection, id])) : selection.filter((item) => item !== id)))
@@ -340,6 +405,7 @@ export function PlanningChambres() {
       setPayloadsEnAttente([])
       setReaffectationsEnAttente([])
       toast.success(`${mouvementsCrees} mouvement(s) hotelier(s) et ${menagesCrees} menage(s) long sejour crees.`)
+      await chargerLongsSejours()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Creation du long sejour impossible.')
     } finally {
@@ -374,6 +440,133 @@ export function PlanningChambres() {
     return payloads.length
   }
 
+  function demarrerEditionSejour(sejour: SejourChambre) {
+    setEditionSejour(sejour)
+    setFormSejour({
+      date_debut: sejour.date_debut,
+      date_fin: sejour.date_fin,
+      frequence_menage_semaine: sejour.frequence_menage_semaine || 1,
+      jour_menage_1: sejour.jour_menage_1 ?? 2,
+      jour_menage_2: sejour.jour_menage_2 ?? 5,
+      est_actif: sejour.est_actif,
+    })
+  }
+
+  async function enregistrerEditionSejour(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!editionSejour) return
+    if (formSejour.date_fin < formSejour.date_debut) {
+      toast.error('La date fin doit etre apres ou egale a la date debut.')
+      return
+    }
+    if (formSejour.frequence_menage_semaine === 2 && formSejour.jour_menage_1 === formSejour.jour_menage_2) {
+      toast.error('Choisissez deux jours differents.')
+      return
+    }
+
+    setSoumission(true)
+    try {
+      const sejour = await modifierSejourChambre(editionSejour.id, {
+        date_debut: formSejour.date_debut,
+        date_fin: formSejour.date_fin,
+        type_sejour: 'long_sejour',
+        frequence_menage_semaine: formSejour.frequence_menage_semaine,
+        jour_menage_1: formSejour.jour_menage_1,
+        jour_menage_2: formSejour.frequence_menage_semaine === 2 ? formSejour.jour_menage_2 : null,
+        est_actif: formSejour.est_actif,
+      })
+      await synchroniserTachesLongSejour(sejour)
+      toast.success('Long sejour mis a jour.')
+      setEditionSejour(null)
+      await chargerLongsSejours()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Modification du long sejour impossible.')
+    } finally {
+      setSoumission(false)
+    }
+  }
+
+  async function arreterLongSejour(sejour: SejourChambre) {
+    if (!window.confirm('Mettre fin au regime long sejour et supprimer les menages futurs non realises ?')) return
+
+    setSoumission(true)
+    try {
+      const sejourModifie = await modifierSejourChambre(sejour.id, {
+        date_debut: sejour.date_debut,
+        date_fin: aujourdHui < sejour.date_fin ? aujourdHui : sejour.date_fin,
+        type_sejour: 'normal',
+        est_actif: false,
+      })
+
+      const taches = await listerToutesTachesChambres()
+      const futures = taches.filter((tache) =>
+        tache.id_sejour_chambre === sejourModifie.id &&
+        tache.type_generation === 'long_sejour' &&
+        !tache.date_realisation &&
+        tache.etat?.nom !== 'TERMINE' &&
+        tache.date_execution >= aujourdHui,
+      )
+
+      await Promise.all(futures.map((tache) => supprimerTacheChambre(tache.id)))
+      toast.success('Regime long sejour arrete.')
+      await chargerLongsSejours()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Arret du long sejour impossible.')
+    } finally {
+      setSoumission(false)
+    }
+  }
+
+  async function synchroniserTachesLongSejour(sejour: SejourChambre) {
+    const typeMenage = trouverTypeMenageLongSejour()
+    if (!typeMenage || !etatAffecte || !sejour.lieu) return
+
+    const toutesTaches = await listerToutesTachesChambres()
+    const existantes = toutesTaches.filter((tache) => tache.id_sejour_chambre === sejour.id && tache.type_generation === 'long_sejour')
+    const datesAttendues = sejour.est_actif && sejour.type_sejour === 'long_sejour'
+      ? datesMenageLongSejourPourSejour(sejour).filter((date) => date >= aujourdHui)
+      : []
+    const datesAttenduesSet = new Set(datesAttendues)
+
+    const futuresASupprimer = existantes.filter((tache) => {
+      const dateInitiale = tache.date_initiale || tache.date_mouvement
+      return !tache.date_realisation &&
+        tache.etat?.nom !== 'TERMINE' &&
+        dateInitiale >= aujourdHui &&
+        !datesAttenduesSet.has(dateInitiale)
+    })
+
+    await Promise.all(futuresASupprimer.map((tache) => supprimerTacheChambre(tache.id)))
+
+    const datesExistantes = new Set(
+      existantes
+        .map((tache) => tache.date_initiale || tache.date_mouvement)
+        .filter((date) => datesAttenduesSet.has(date)),
+    )
+
+    const nouvellesDates = datesAttendues.filter((date) => !datesExistantes.has(date))
+    for (const date of nouvellesDates) {
+      await creerTacheChambre({
+        id_planning_chambre: null,
+        id_sejour_chambre: sejour.id,
+        id_lieu: sejour.id_lieu,
+        id_type_mouvement: typeMenage.id,
+        date_mouvement: date,
+        date_initiale: date,
+        date_execution: date,
+        date_limite: finSemaineOuSejour(date, sejour.date_fin),
+        id_executant: null,
+        id_executants: [],
+        id_etat: etatAffecte.id,
+        points: typeMenage.points,
+        urgence: date <= aujourdHui ? 'haute' : 'normale',
+        commentaire: 'Menage long sejour',
+        type_generation: 'long_sejour',
+      })
+    }
+  }
+
   function datesMenageLongSejour() {
     const jours = frequenceLongSejour === 2
       ? [Number(jourMenageLongSejour1), Number(jourMenageLongSejour2)]
@@ -381,6 +574,17 @@ export function PlanningChambres() {
 
     return datesEntre(dateDebutSejour, dateFinSejour)
       .filter((date) => date > dateDebutSejour && date < dateFinSejour)
+      .filter((date) => jours.includes(new Date(`${date}T00:00:00`).getDay()))
+  }
+
+  function datesMenageLongSejourPourSejour(sejour: SejourChambre) {
+    if (sejour.type_sejour !== 'long_sejour' || !sejour.frequence_menage_semaine || sejour.jour_menage_1 === null) return []
+    const jours = sejour.frequence_menage_semaine === 2 && sejour.jour_menage_2 !== null
+      ? [sejour.jour_menage_1, sejour.jour_menage_2]
+      : [sejour.jour_menage_1]
+
+    return datesEntre(sejour.date_debut, sejour.date_fin)
+      .filter((date) => date > sejour.date_debut && date < sejour.date_fin)
       .filter((date) => jours.includes(new Date(`${date}T00:00:00`).getDay()))
   }
 
@@ -674,6 +878,15 @@ export function PlanningChambres() {
         <main className="min-w-0 space-y-4">
           <ChargeExecutants charges={charges} peutModifier={peutModifier} onProposerReaffectation={proposerReaffectation} />
           <ChargeBatiments charges={chargesBatiments} dates={datesVisibles} />
+          <LongsSejoursPanel
+            sejours={longsSejours}
+            controles={controleLongsSejours}
+            historique={historiqueDeplacements}
+            chargement={chargementSejours}
+            peutModifier={peutModifier}
+            onModifier={demarrerEditionSejour}
+            onArreter={(sejour) => void arreterLongSejour(sejour)}
+          />
 
           <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 p-4">
@@ -925,6 +1138,64 @@ export function PlanningChambres() {
         </div>
       )}
 
+      {editionSejour && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 px-4 py-6">
+          <form onSubmit={enregistrerEditionSejour} className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-slate-950">Modifier long sejour</h2>
+                <p className="mt-1 text-sm text-slate-500">{editionSejour.lieu?.nom || 'Chambre'} - parametres rattaches au sejour.</p>
+              </div>
+              <button type="button" onClick={() => setEditionSejour(null)} className="rounded-md p-2 text-slate-500 hover:bg-slate-100" aria-label="Fermer">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Date debut</span>
+                <input type="date" value={formSejour.date_debut} onChange={(event) => setFormSejour({ ...formSejour, date_debut: event.target.value })} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Date fin prevue</span>
+                <input type="date" value={formSejour.date_fin} onChange={(event) => setFormSejour({ ...formSejour, date_fin: event.target.value })} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Frequence</span>
+                <select value={formSejour.frequence_menage_semaine} onChange={(event) => setFormSejour({ ...formSejour, frequence_menage_semaine: Number(event.target.value) as 1 | 2, jour_menage_2: Number(event.target.value) === 2 ? (formSejour.jour_menage_2 ?? 5) : null })} className={inputClass}>
+                  <option value={1}>1 fois par semaine</option>
+                  <option value={2}>2 fois par semaine</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">Jour habituel 1</span>
+                <select value={formSejour.jour_menage_1} onChange={(event) => setFormSejour({ ...formSejour, jour_menage_1: Number(event.target.value) })} className={inputClass}>
+                  {joursLabels.map((jour, index) => <option key={jour} value={index}>{nomJourComplet(index)}</option>)}
+                </select>
+              </label>
+              {formSejour.frequence_menage_semaine === 2 && (
+                <label className="block sm:col-start-2">
+                  <span className="mb-1 block text-sm font-medium text-slate-700">Jour habituel 2</span>
+                  <select value={formSejour.jour_menage_2 ?? 5} onChange={(event) => setFormSejour({ ...formSejour, jour_menage_2: Number(event.target.value) })} className={inputClass}>
+                    {joursLabels.map((jour, index) => <option key={jour} value={index}>{nomJourComplet(index)}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+
+            <label className="mt-4 flex items-center gap-2 text-sm text-slate-700">
+              <input type="checkbox" checked={formSejour.est_actif} onChange={(event) => setFormSejour({ ...formSejour, est_actif: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600" />
+              Long sejour actif
+            </label>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setEditionSejour(null)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Annuler</button>
+              <button type="submit" disabled={soumission || !peutModifier} className="rounded-md bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Enregistrer</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {propositionsEnAttente && (
         <div className="fixed inset-y-0 right-0 z-[65] flex w-full max-w-lg flex-col border-l border-amber-200 bg-amber-50 shadow-xl">
           <div className="flex items-start justify-between gap-3 border-b border-amber-200 p-4">
@@ -1042,6 +1313,126 @@ function CellMouvements({ mouvements }: { mouvements: PlanningChambre[] }) {
           <p className="truncate text-xs opacity-80">{libelleExecutantsPlanningChambre(mouvement)}</p>
         </div>
       ))}
+    </div>
+  )
+}
+
+function LongsSejoursPanel({
+  sejours,
+  controles,
+  historique,
+  chargement,
+  peutModifier,
+  onModifier,
+  onArreter,
+}: {
+  sejours: SejourChambre[]
+  controles: Array<{ sejour: SejourChambre; prevues: number; realisees: number; restantes: number; deplacees: number }>
+  historique: HistoriqueDeplacementTacheChambre[]
+  chargement: boolean
+  peutModifier: boolean
+  onModifier: (sejour: SejourChambre) => void
+  onArreter: (sejour: SejourChambre) => void
+}) {
+  const controlesParSejour = new Map(controles.map((controle) => [controle.sejour.id, controle]))
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 className="font-semibold text-slate-950">Longs sejours</h2>
+          <p className="mt-1 text-sm text-slate-500">Parametrage des menages rattaches au sejour, pas a la chambre.</p>
+        </div>
+        <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{sejours.filter((sejour) => sejour.est_actif).length} actif(s)</span>
+      </div>
+
+      {chargement ? (
+        <div className="p-6 text-center text-sm text-slate-500">Chargement des longs sejours...</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="min-w-[980px] w-full border-collapse text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className={thClass}>Chambre</th>
+                <th className={thClass}>Long sejour</th>
+                <th className={thClass}>Frequence</th>
+                <th className={thClass}>Jours habituels</th>
+                <th className={thClass}>Debut</th>
+                <th className={thClass}>Fin prevue</th>
+                <th className={thClass}>Cette semaine</th>
+                <th className={thClass}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sejours.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-6 text-center text-slate-500">Aucun long sejour trouve.</td>
+                </tr>
+              )}
+              {sejours.map((sejour) => {
+                const controle = controlesParSejour.get(sejour.id)
+                return (
+                  <tr key={sejour.id} className={sejour.est_actif ? 'border-b border-slate-100' : 'border-b border-slate-100 bg-slate-50 text-slate-400'}>
+                    <td className={tdClass}>
+                      <p className="font-semibold text-slate-900">{sejour.lieu?.nom || '-'}</p>
+                      <p className="text-xs text-slate-500">{sejour.lieu?.batiment?.nom || '-'}</p>
+                    </td>
+                    <td className={tdClass}>{sejour.est_actif ? 'Oui' : 'Termine'}</td>
+                    <td className={tdClass}>{sejour.frequence_menage_semaine || '-'} / semaine</td>
+                    <td className={tdClass}>
+                      {[sejour.jour_menage_1, sejour.jour_menage_2]
+                        .filter((jour): jour is number => jour !== null && jour !== undefined)
+                        .map(nomJourComplet)
+                        .join(' + ') || '-'}
+                    </td>
+                    <td className={tdClass}>{formatDateCourte(sejour.date_debut)}</td>
+                    <td className={tdClass}>{formatDateCourte(sejour.date_fin)}</td>
+                    <td className={tdClass}>
+                      {controle ? (
+                        <div className="flex flex-wrap gap-1">
+                          <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">Prevus {controle.prevues}</span>
+                          <span className="rounded bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Realises {controle.realisees}</span>
+                          <span className="rounded bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Restants {controle.restantes}</span>
+                          {controle.deplacees > 0 && <span className="rounded bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700">Deplaces {controle.deplacees}</span>}
+                        </div>
+                      ) : '-'}
+                    </td>
+                    <td className={tdClass}>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" disabled={!peutModifier} onClick={() => onModifier(sejour)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                          <Pencil className="h-3.5 w-3.5" />
+                          Modifier
+                        </button>
+                        {sejour.est_actif && (
+                          <button type="button" disabled={!peutModifier} onClick={() => onArreter(sejour)} className="rounded-md border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-60">
+                            Arreter
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="border-t border-slate-200 px-4 py-3">
+        <p className="mb-2 text-sm font-semibold text-slate-900">Derniers deplacements</p>
+        {historique.length === 0 ? (
+          <p className="text-sm text-slate-500">Aucun deplacement trace.</p>
+        ) : (
+          <div className="grid gap-2 lg:grid-cols-2">
+            {historique.slice(0, 6).map((item) => (
+              <div key={item.id} className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                <span className="font-semibold text-slate-900">{formatDateCourte(item.ancienne_date_execution)} vers {formatDateCourte(item.nouvelle_date_execution)}</span>
+                <span> - {item.utilisateur?.nom || 'Utilisateur'} - {formatDateHeure(item.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -1365,6 +1756,18 @@ function datesEntre(dateDebut: string, dateFin: string) {
   return dates
 }
 
+function debutSemaineISO(date: string) {
+  const courant = new Date(`${date}T00:00:00`)
+  const jour = courant.getDay()
+  const decalage = jour === 0 ? -6 : 1 - jour
+  courant.setDate(courant.getDate() + decalage)
+  return formatDateInput(courant)
+}
+
+function datesSeChevauchent(dateA: string, dateB: string, debut: string, fin: string) {
+  return (dateA >= debut && dateA <= fin) || (dateB >= debut && dateB <= fin)
+}
+
 function finSemaineOuSejour(date: string, dateFinSejour: string) {
   const courant = new Date(`${date}T00:00:00`)
   const joursJusquaSamedi = (6 - courant.getDay() + 7) % 7
@@ -1381,6 +1784,14 @@ function formatDateCourte(date: string) {
   return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit' }).format(new Date(`${date}T00:00:00`))
 }
 
+function formatDateHeure(date: string) {
+  return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(date))
+}
+
 function formatDateLongue(date: string) {
   return new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date(`${date}T00:00:00`))
 }
+
+const inputClass = 'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100'
+const thClass = 'border-b border-slate-200 px-3 py-3 text-left text-xs font-semibold uppercase text-slate-500'
+const tdClass = 'px-3 py-3 align-top text-slate-700'
