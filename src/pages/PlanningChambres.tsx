@@ -881,6 +881,7 @@ export function PlanningChambres() {
           <LongsSejoursPanel
             sejours={longsSejours}
             controles={controleLongsSejours}
+            taches={tachesLongsSejours}
             historique={historiqueDeplacements}
             chargement={chargementSejours}
             peutModifier={peutModifier}
@@ -1320,6 +1321,7 @@ function CellMouvements({ mouvements }: { mouvements: PlanningChambre[] }) {
 function LongsSejoursPanel({
   sejours,
   controles,
+  taches,
   historique,
   chargement,
   peutModifier,
@@ -1328,13 +1330,30 @@ function LongsSejoursPanel({
 }: {
   sejours: SejourChambre[]
   controles: Array<{ sejour: SejourChambre; prevues: number; realisees: number; restantes: number; deplacees: number }>
+  taches: TacheChambre[]
   historique: HistoriqueDeplacementTacheChambre[]
   chargement: boolean
   peutModifier: boolean
   onModifier: (sejour: SejourChambre) => void
   onArreter: (sejour: SejourChambre) => void
 }) {
+  const [detailSejour, setDetailSejour] = useState<SejourChambre | null>(null)
   const controlesParSejour = new Map(controles.map((controle) => [controle.sejour.id, controle]))
+  const tachesParSejour = useMemo(() => {
+    const map = new Map<string, TacheChambre[]>()
+    taches.forEach((tache) => {
+      if (!tache.id_sejour_chambre) return
+      map.set(tache.id_sejour_chambre, [...(map.get(tache.id_sejour_chambre) || []), tache])
+    })
+    return map
+  }, [taches])
+  const historiqueParTache = useMemo(() => {
+    const map = new Map<string, HistoriqueDeplacementTacheChambre[]>()
+    historique.forEach((item) => {
+      map.set(item.id_tache_chambre, [...(map.get(item.id_tache_chambre) || []), item])
+    })
+    return map
+  }, [historique])
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -1371,6 +1390,10 @@ function LongsSejoursPanel({
               )}
               {sejours.map((sejour) => {
                 const controle = controlesParSejour.get(sejour.id)
+                const tachesSejour = tachesParSejour.get(sejour.id) || []
+                const dernierDeplacement = tachesSejour
+                  .flatMap((tache) => historiqueParTache.get(tache.id) || [])
+                  .sort((a, b) => b.created_at.localeCompare(a.created_at))[0]
                 return (
                   <tr key={sejour.id} className={sejour.est_actif ? 'border-b border-slate-100' : 'border-b border-slate-100 bg-slate-50 text-slate-400'}>
                     <td className={tdClass}>
@@ -1396,9 +1419,17 @@ function LongsSejoursPanel({
                           {controle.deplacees > 0 && <span className="rounded bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700">Deplaces {controle.deplacees}</span>}
                         </div>
                       ) : '-'}
+                      {dernierDeplacement && (
+                        <p className="mt-2 text-xs text-slate-500">
+                          Dernier : {formatDateCourte(dernierDeplacement.ancienne_date_execution)} vers {formatDateCourte(dernierDeplacement.nouvelle_date_execution)}
+                        </p>
+                      )}
                     </td>
                     <td className={tdClass}>
                       <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => setDetailSejour(sejour)} className="rounded-md border border-teal-300 px-2 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-50">
+                          Voir detail
+                        </button>
                         <button type="button" disabled={!peutModifier} onClick={() => onModifier(sejour)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
                           <Pencil className="h-3.5 w-3.5" />
                           Modifier
@@ -1418,21 +1449,137 @@ function LongsSejoursPanel({
         </div>
       )}
 
-      <div className="border-t border-slate-200 px-4 py-3">
-        <p className="mb-2 text-sm font-semibold text-slate-900">Derniers deplacements</p>
-        {historique.length === 0 ? (
-          <p className="text-sm text-slate-500">Aucun deplacement trace.</p>
-        ) : (
-          <div className="grid gap-2 lg:grid-cols-2">
-            {historique.slice(0, 6).map((item) => (
-              <div key={item.id} className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                <span className="font-semibold text-slate-900">{formatDateCourte(item.ancienne_date_execution)} vers {formatDateCourte(item.nouvelle_date_execution)}</span>
-                <span> - {item.utilisateur?.nom || 'Utilisateur'} - {formatDateHeure(item.created_at)}</span>
-              </div>
-            ))}
+      {detailSejour && (
+        <DetailLongSejourModal
+          sejour={detailSejour}
+          controle={controlesParSejour.get(detailSejour.id)}
+          taches={(tachesParSejour.get(detailSejour.id) || []).sort((a, b) => (a.date_initiale || a.date_mouvement).localeCompare(b.date_initiale || b.date_mouvement))}
+          historiqueParTache={historiqueParTache}
+          onClose={() => setDetailSejour(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function DetailLongSejourModal({
+  sejour,
+  controle,
+  taches,
+  historiqueParTache,
+  onClose,
+}: {
+  sejour: SejourChambre
+  controle?: { sejour: SejourChambre; prevues: number; realisees: number; restantes: number; deplacees: number }
+  taches: TacheChambre[]
+  historiqueParTache: Map<string, HistoriqueDeplacementTacheChambre[]>
+  onClose: () => void
+}) {
+  const historiques = taches
+    .flatMap((tache) => historiqueParTache.get(tache.id) || [])
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 px-4 py-6">
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-lg bg-white shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-5">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-950">Detail long sejour - {sejour.lieu?.nom || 'Chambre'}</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              {formatDateCourte(sejour.date_debut)} au {formatDateCourte(sejour.date_fin)} - {sejour.frequence_menage_semaine || '-'} menage(s) / semaine
+            </p>
           </div>
-        )}
+          <button type="button" onClick={onClose} className="rounded-md p-2 text-slate-500 hover:bg-slate-100" aria-label="Fermer">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="grid gap-3 border-b border-slate-200 p-5 sm:grid-cols-4">
+          <MiniLongSejourStat label="Prevus" value={controle?.prevues ?? 0} tone="slate" />
+          <MiniLongSejourStat label="Realises" value={controle?.realisees ?? 0} tone="green" />
+          <MiniLongSejourStat label="Restants" value={controle?.restantes ?? 0} tone="orange" />
+          <MiniLongSejourStat label="Deplaces" value={controle?.deplacees ?? 0} tone="blue" />
+        </div>
+
+        <div className="p-5">
+          <h4 className="mb-3 font-semibold text-slate-950">Occurrences de menage</h4>
+          <div className="overflow-x-auto rounded-lg border border-slate-200">
+            <table className="min-w-[820px] w-full border-collapse text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className={thClass}>Date initiale</th>
+                  <th className={thClass}>Date programmee</th>
+                  <th className={thClass}>Date realisee</th>
+                  <th className={thClass}>Statut</th>
+                  <th className={thClass}>Executant</th>
+                  <th className={thClass}>Historique</th>
+                </tr>
+              </thead>
+              <tbody>
+                {taches.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-6 text-center text-slate-500">Aucune occurrence long sejour.</td>
+                  </tr>
+                )}
+                {taches.map((tache) => {
+                  const mouvements = historiqueParTache.get(tache.id) || []
+                  return (
+                    <tr key={tache.id} className="border-b border-slate-100">
+                      <td className={tdClass}>{formatDateCourte(tache.date_initiale || tache.date_mouvement)}</td>
+                      <td className={tdClass}>
+                        {formatDateCourte(tache.date_execution)}
+                        {tache.est_deplacee && <span className="ml-2 rounded bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700">Deplace</span>}
+                      </td>
+                      <td className={tdClass}>{tache.date_realisation ? formatDateCourte(tache.date_realisation) : '-'}</td>
+                      <td className={tdClass}>{libelleEtat(tache.etat?.nom || 'AFFECTE')}</td>
+                      <td className={tdClass}>{libelleExecutantsTacheChambre(tache)}</td>
+                      <td className={tdClass}>
+                        {mouvements.length === 0 ? '-' : mouvements.map((item) => (
+                          <p key={item.id} className="text-xs text-slate-600">
+                            {formatDateCourte(item.ancienne_date_execution)} vers {formatDateCourte(item.nouvelle_date_execution)} par {item.utilisateur?.nom || 'Utilisateur'}
+                          </p>
+                        ))}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-200 p-5">
+          <h4 className="mb-3 font-semibold text-slate-950">Deplacements du sejour</h4>
+          {historiques.length === 0 ? (
+            <p className="rounded-md bg-slate-50 p-3 text-sm text-slate-500">Aucun deplacement trace pour ce sejour.</p>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2">
+              {historiques.map((item) => (
+                <div key={item.id} className="rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  <span className="font-semibold text-slate-900">{formatDateCourte(item.ancienne_date_execution)} vers {formatDateCourte(item.nouvelle_date_execution)}</span>
+                  <span> - {item.utilisateur?.nom || 'Utilisateur'} - {formatDateHeure(item.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
+    </div>
+  )
+}
+
+function MiniLongSejourStat({ label, value, tone }: { label: string; value: number; tone: 'slate' | 'green' | 'orange' | 'blue' }) {
+  const classes = {
+    slate: 'bg-slate-50 text-slate-800',
+    green: 'bg-emerald-50 text-emerald-800',
+    orange: 'bg-amber-50 text-amber-800',
+    blue: 'bg-sky-50 text-sky-800',
+  }
+
+  return (
+    <div className={`rounded-lg p-3 ${classes[tone]}`}>
+      <p className="text-xs font-semibold uppercase opacity-70">{label}</p>
+      <p className="mt-1 text-2xl font-bold">{value}</p>
     </div>
   )
 }
