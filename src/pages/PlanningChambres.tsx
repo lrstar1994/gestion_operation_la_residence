@@ -1756,6 +1756,12 @@ function datesEntre(dateDebut: string, dateFin: string) {
   return dates
 }
 
+function ajouterJours(date: string, jours: number) {
+  const courant = new Date(`${date}T00:00:00`)
+  courant.setDate(courant.getDate() + jours)
+  return formatDateInput(courant)
+}
+
 function debutSemaineISO(date: string) {
   const courant = new Date(`${date}T00:00:00`)
   const jour = courant.getDay()
