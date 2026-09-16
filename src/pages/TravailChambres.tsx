@@ -645,7 +645,13 @@ export function TravailChambres() {
           commentaire: commentaire.trim() || item.tache.commentaire,
         })
       } else if (item.mouvement) {
-        await creerTacheDepuisMouvement(item.mouvement)
+        await creerTacheDepuisMouvement(item.mouvement, {
+          dateCible: dateExecution,
+          dateLimiteCible: dateLimite,
+          idsExecutantsCibles: idsExecutants,
+          urgenceCible: urgence,
+          commentaireCible: commentaire.trim() || null,
+        })
       }
     }
 
@@ -703,21 +709,32 @@ export function TravailChambres() {
     toast.success(`${tachesPeriodiquesSelectionnees.length} tache(s) periodique(s) programmee(s).`)
   }
 
-  async function creerTacheDepuisMouvement(mouvement: PlanningChambre) {
+  async function creerTacheDepuisMouvement(
+    mouvement: PlanningChambre,
+    options?: {
+      dateCible?: string
+      dateLimiteCible?: string
+      idsExecutantsCibles?: string[]
+      urgenceCible?: UrgenceTacheChambre
+      commentaireCible?: string | null
+    },
+  ) {
+    const dateCible = options?.dateCible || dateExecution
+    const idsExecutantsCibles = options?.idsExecutantsCibles ?? idsExecutants
     const payload: TacheChambrePayload = {
       id_planning_chambre: mouvement.id,
       id_lieu: mouvement.id_lieu,
       id_type_mouvement: mouvement.id_type_mouvement,
       date_mouvement: mouvement.date,
       date_initiale: mouvement.date,
-      date_execution: dateExecution,
-      date_limite: dateLimite,
-      id_executant: idsExecutants[0] || null,
-      id_executants: idsExecutants,
+      date_execution: dateCible,
+      date_limite: options?.dateLimiteCible || dateCible,
+      id_executant: idsExecutantsCibles[0] || null,
+      id_executants: idsExecutantsCibles,
       id_etat: etatAffecte.id,
       points: mouvement.type_mouvement?.points || 0,
-      urgence,
-      commentaire: commentaire.trim() || null,
+      urgence: options?.urgenceCible || urgence,
+      commentaire: options?.commentaireCible ?? (commentaire.trim() || null),
     }
 
     await creerTacheChambre(payload)
@@ -800,13 +817,33 @@ export function TravailChambres() {
 
     if (!item) return
 
-    if (!item.tache) {
-      toast.error("Ce mouvement doit d'abord etre programme avant de pouvoir etre deplace.")
+    if (item.id_lieu !== idLieuCible) {
+      toast.error('Le glisser-deposer change seulement la date. Pour changer de chambre, modifie la fiche.')
       return
     }
 
-    if (item.id_lieu !== idLieuCible) {
-      toast.error('Le glisser-deposer change seulement la date. Pour changer de chambre, modifie la fiche.')
+    if (!item.tache) {
+      if (!item.mouvement || !etatAffecte) return
+
+      const idsMouvement = idsExecutantsPlanningChambre(item.mouvement)
+      const idsCompatibles = idsMouvement.filter((id) => estExecutantEnTravail(id, nouvelleDate))
+
+      setSoumission(true)
+      try {
+        await creerTacheDepuisMouvement(item.mouvement, {
+          dateCible: nouvelleDate,
+          dateLimiteCible: nouvelleDate,
+          idsExecutantsCibles: idsCompatibles,
+          urgenceCible: urgenceDepuisMouvement(item.mouvement.date, aujourdHui),
+          commentaireCible: null,
+        })
+        toast.success(`Travail programme au ${formatDate(nouvelleDate)}.`)
+        await charger()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Programmation impossible.')
+      } finally {
+        setSoumission(false)
+      }
       return
     }
 
@@ -1183,9 +1220,9 @@ export function TravailChambres() {
                                       {items.map((item) => (
                                         <div
                                           key={item.id}
-                                          draggable={Boolean(item.tache) && !item.tache.date_realisation && item.tache.etat?.nom !== 'TERMINE'}
+                                          draggable={Boolean(item.tache ? !item.tache.date_realisation && item.tache.etat?.nom !== 'TERMINE' : item.mouvement)}
                                           onDragStart={(event) => {
-                                            if (!item.tache || item.tache.date_realisation || item.tache.etat?.nom === 'TERMINE') {
+                                            if (item.tache?.date_realisation || item.tache?.etat?.nom === 'TERMINE' || (!item.tache && !item.mouvement)) {
                                               event.preventDefault()
                                               return
                                             }
@@ -1197,9 +1234,9 @@ export function TravailChambres() {
                                             setItemGlisse(null)
                                             setCelluleSurvolee(null)
                                           }}
-                                          className={itemGlisse === item.id ? 'cursor-grabbing rounded-md border p-2 opacity-60 ring-2 ring-teal-300' : item.tache && !item.tache.date_realisation && item.tache.etat?.nom !== 'TERMINE' ? 'cursor-grab rounded-md border p-2 transition hover:-translate-y-0.5 hover:shadow-sm' : 'rounded-md border p-2'}
+                                          className={itemGlisse === item.id ? 'cursor-grabbing rounded-md border p-2 opacity-60 ring-2 ring-teal-300' : (item.tache ? !item.tache.date_realisation && item.tache.etat?.nom !== 'TERMINE' : item.mouvement) ? 'cursor-grab rounded-md border p-2 transition hover:-translate-y-0.5 hover:shadow-sm' : 'rounded-md border p-2'}
                                           style={styleMouvement(item.type?.couleur)}
-                                          title={item.tache ? 'Glisser pour changer la date execution' : 'Programme ce mouvement avant de pouvoir le deplacer'}
+                                          title={item.tache ? 'Glisser pour changer la date execution' : 'Glisser pour programmer rapidement a une date execution'}
                                         >
                                           <div className="mb-2 flex flex-wrap items-center gap-1">
                                             <Badge tone={item.planifie ? 'green' : 'orange'}>{item.planifie ? 'Programme' : 'Non programme'}</Badge>
