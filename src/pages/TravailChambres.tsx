@@ -185,8 +185,8 @@ export function TravailChambres() {
   )
 
   const mouvementsDejaPlanifies = useMemo(
-    () => new Set(toutesTaches.map((tache) => tache.id_planning_chambre).filter(Boolean)),
-    [toutesTaches],
+    () => new Set([...taches, ...toutesTaches].map((tache) => tache.id_planning_chambre).filter(Boolean)),
+    [taches, toutesTaches],
   )
 
   const mouvementsDisponibles = useMemo(() => {
