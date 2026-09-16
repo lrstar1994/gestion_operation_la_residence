@@ -246,7 +246,7 @@ export function PlanningChambres() {
     const typeDepart = trouverTypeMouvement('DEPART')
     const typeRecouche = trouverTypeMouvement('RECOUCHE')
 
-    if (!typeArrivee || !typeDepart || (typeSejourFormulaire === 'normal' && !typeRecouche)) return []
+    if (!typeArrivee || !typeDepart || !typeRecouche) return []
 
     return chambresSelectionneesListe()
       .flatMap((chambre) => {
@@ -259,7 +259,7 @@ export function PlanningChambres() {
             payloads.push(mouvementPayload(chambre, date, typeArrivee.id, executantsLot))
           }
 
-          if (typeSejourFormulaire === 'normal' && date > dateDebutSejour && date < dateFinSejour) {
+          if (date > dateDebutSejour && date < dateFinSejour) {
             payloads.push(mouvementPayload(chambre, date, typeRecouche!.id, executantsLot))
           }
 
@@ -332,8 +332,8 @@ export function PlanningChambres() {
       return
     }
 
-    if (modeSaisie === 'sejour' && typeSejourFormulaire === 'long_sejour' && (!trouverTypeMouvement('ARRIVEE') || !trouverTypeMouvement('DEPART') || !trouverTypeMenageLongSejour())) {
-      toast.error('Les types ARRIVEE, DEPART et MENAGE_LONG_SEJOUR doivent exister.')
+    if (modeSaisie === 'sejour' && typeSejourFormulaire === 'long_sejour' && (!trouverTypeMouvement('ARRIVEE') || !trouverTypeMouvement('DEPART') || !trouverTypeMouvement('RECOUCHE') || !trouverTypeMenageLongSejour())) {
+      toast.error('Les types ARRIVEE, DEPART, RECOUCHE et MENAGE_LONG_SEJOUR doivent exister.')
       return
     }
 
@@ -371,9 +371,10 @@ export function PlanningChambres() {
     const chambresSelection = chambresSelectionneesListe()
     const typeArrivee = trouverTypeMouvement('ARRIVEE')
     const typeDepart = trouverTypeMouvement('DEPART')
+    const typeRecouche = trouverTypeMouvement('RECOUCHE')
     const typeMenage = trouverTypeMenageLongSejour()
 
-    if (!typeArrivee || !typeDepart || !typeMenage || !etatAffecte) return
+    if (!typeArrivee || !typeDepart || !typeRecouche || !typeMenage || !etatAffecte) return
 
     setSoumission(true)
 
@@ -392,10 +393,23 @@ export function PlanningChambres() {
           jour_menage_2: frequenceLongSejour === 2 ? Number(jourMenageLongSejour2) : null,
         })
 
-        const payloadsMouvements: PlanningChambrePayload[] = [
-          { ...mouvementPayload(chambre, dateDebutSejour, typeArrivee.id, executantsLot), id_sejour_chambre: sejour.id },
-          { ...mouvementPayload(chambre, dateFinSejour, typeDepart.id, executantsLot), id_sejour_chambre: sejour.id },
-        ]
+        const payloadsMouvements: PlanningChambrePayload[] = datesEntre(dateDebutSejour, dateFinSejour).flatMap((date) => {
+          const payloadsDate: PlanningChambrePayload[] = []
+
+          if (date === dateDebutSejour) {
+            payloadsDate.push({ ...mouvementPayload(chambre, date, typeArrivee.id, executantsLot), id_sejour_chambre: sejour.id })
+          }
+
+          if (date > dateDebutSejour && date < dateFinSejour) {
+            payloadsDate.push({ ...mouvementPayload(chambre, date, typeRecouche.id, executantsLot), id_sejour_chambre: sejour.id })
+          }
+
+          if (date === dateFinSejour) {
+            payloadsDate.push({ ...mouvementPayload(chambre, date, typeDepart.id, executantsLot), id_sejour_chambre: sejour.id })
+          }
+
+          return payloadsDate
+        })
 
         const resultat = await appliquerLot(payloadsMouvements, remplacer)
         mouvementsCrees += resultat.sauvegardes.length
