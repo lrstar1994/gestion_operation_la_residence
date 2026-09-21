@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
-import { AlertTriangle, CalendarDays, Clock, History, RefreshCcw, Search } from 'lucide-react'
+import { AlertTriangle, CalendarDays, Clock, History, RefreshCcw, Save, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { listerEtatsMouvement, type EtatMouvement } from '../api/planningChambre'
-import { idsExecutantsTacheChambre, libelleExecutantsTacheChambre, type TacheChambre } from '../api/tachesChambres'
+import { idsExecutantsTacheChambre, libelleExecutantsTacheChambre, modifierTacheChambre, type TacheChambre } from '../api/tachesChambres'
 import {
   changerEtatTacheChambre,
   listerHistoriqueEtatTacheChambre,
@@ -31,6 +31,10 @@ export function SuiviOperational() {
   const [historique, setHistorique] = useState<HistoriqueEtatTacheChambre[]>([])
   const [page, setPage] = useState(1)
   const [lignesParPage, setLignesParPage] = useState(15)
+  const [idsSelectionnes, setIdsSelectionnes] = useState<string[]>([])
+  const [executantGroupe, setExecutantGroupe] = useState('')
+  const [etatGroupe, setEtatGroupe] = useState('')
+  const [actionGroupeEnCours, setActionGroupeEnCours] = useState(false)
 
   useEffect(() => {
     void charger()
@@ -96,6 +100,15 @@ export function SuiviOperational() {
     const debut = (page - 1) * lignesParPage
     return tachesFiltrees.slice(debut, debut + lignesParPage)
   }, [lignesParPage, page, tachesFiltrees])
+  const tachesSelectionnables = useMemo(() => tachesFiltrees.filter((tache) => tache.etat?.nom !== 'TERMINE'), [tachesFiltrees])
+  const tachesSelectionnees = useMemo(
+    () => taches.filter((tache) => idsSelectionnes.includes(tache.id) && tache.etat?.nom !== 'TERMINE'),
+    [idsSelectionnes, taches],
+  )
+  const idsSelectionPage = useMemo(
+    () => tachesPage.filter((tache) => tache.etat?.nom !== 'TERMINE').map((tache) => tache.id),
+    [tachesPage],
+  )
 
   useEffect(() => {
     setPage(1)
@@ -104,6 +117,10 @@ export function SuiviOperational() {
   useEffect(() => {
     if (page > totalPages) setPage(totalPages)
   }, [page, totalPages])
+
+  useEffect(() => {
+    setIdsSelectionnes((selection) => selection.filter((id) => tachesSelectionnables.some((tache) => tache.id === id)))
+  }, [tachesSelectionnables])
 
   async function changerEtat(tache: TacheChambre, idEtat: string) {
     const etat = etats.find((item) => item.id === idEtat)
@@ -123,6 +140,73 @@ export function SuiviOperational() {
       toast.success('Etat mis a jour.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Changement impossible.')
+    }
+  }
+
+  function basculerSelection(id: string, coche: boolean) {
+    setIdsSelectionnes((selection) => coche ? Array.from(new Set([...selection, id])) : selection.filter((item) => item !== id))
+  }
+
+  function basculerSelectionPage(coche: boolean) {
+    setIdsSelectionnes((selection) => {
+      if (!coche) return selection.filter((id) => !idsSelectionPage.includes(id))
+      return Array.from(new Set([...selection, ...idsSelectionPage]))
+    })
+  }
+
+  async function attribuerSelection() {
+    if (!executantGroupe) {
+      toast.error('Choisissez un executant.')
+      return
+    }
+    if (tachesSelectionnees.length === 0) {
+      toast.error('Selectionnez au moins une tache.')
+      return
+    }
+
+    setActionGroupeEnCours(true)
+    try {
+      const misesAJour = await Promise.all(tachesSelectionnees.map((tache) => modifierTacheChambre(tache.id, { id_executant: executantGroupe, id_executants: [executantGroupe] })))
+      setTaches((liste) => liste.map((tache) => misesAJour.find((item) => item.id === tache.id) || tache))
+      setIdsSelectionnes([])
+      toast.success(`${misesAJour.length} tache(s) attribuee(s).`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Attribution groupee impossible.')
+    } finally {
+      setActionGroupeEnCours(false)
+    }
+  }
+
+  async function changerEtatSelection() {
+    const etat = etats.find((item) => item.id === etatGroupe)
+    if (!etat) {
+      toast.error('Choisissez un etat.')
+      return
+    }
+    if (tachesSelectionnees.length === 0) {
+      toast.error('Selectionnez au moins une tache.')
+      return
+    }
+
+    let motif: string | null = null
+    if (etat.nom === 'BLOQUE') {
+      motif = window.prompt('Motif du blocage')?.trim() || null
+      if (!motif) {
+        toast.error('Le motif est obligatoire pour bloquer une tache.')
+        return
+      }
+    }
+
+    setActionGroupeEnCours(true)
+    try {
+      const misesAJour = await Promise.all(tachesSelectionnees.map((tache) => changerEtatTacheChambre(tache.id, etat.id, motif)))
+      setTaches((liste) => liste.map((tache) => misesAJour.find((item) => item.id === tache.id) || tache))
+      setIdsSelectionnes([])
+      toast.success(`${misesAJour.length} etat(s) mis a jour.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Changement groupe impossible.')
+    } finally {
+      setActionGroupeEnCours(false)
     }
   }
 
@@ -207,12 +291,46 @@ export function SuiviOperational() {
             <SelectFiltre value={etatFiltre} onChange={setEtatFiltre} options={etats.map((item) => ({ value: item.id, label: item.nom.replace('_', ' ') }))} label="Tous etats" />
             <SelectFiltre value={typeFiltre} onChange={setTypeFiltre} options={types.map((item) => ({ value: item.id, label: item.nom }))} label="Tous mouvements" />
           </div>
+          {idsSelectionnes.length > 0 && (
+            <div className="mt-3 flex flex-col gap-2 rounded-md border border-teal-200 bg-teal-50 p-3 text-sm lg:flex-row lg:items-center lg:justify-between">
+              <p className="font-semibold text-teal-900">{idsSelectionnes.length} tache(s) selectionnee(s)</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <select value={executantGroupe} onChange={(event) => setExecutantGroupe(event.target.value)} className="h-9 rounded-md border border-teal-200 bg-white px-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
+                  <option value="">Choisir executant</option>
+                  {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
+                </select>
+                <button type="button" disabled={actionGroupeEnCours || !executantGroupe} onClick={() => void attribuerSelection()} className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60">
+                  <Save className="h-4 w-4" />
+                  Attribuer
+                </button>
+                <select value={etatGroupe} onChange={(event) => setEtatGroupe(event.target.value)} className="h-9 rounded-md border border-teal-200 bg-white px-2 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100">
+                  <option value="">Choisir etat</option>
+                  {etats.map((etat) => <option key={etat.id} value={etat.id}>{etat.nom.replace('_', ' ')}</option>)}
+                </select>
+                <button type="button" disabled={actionGroupeEnCours || !etatGroupe} onClick={() => void changerEtatSelection()} className="h-9 rounded-md border border-teal-700 bg-white px-3 text-sm font-semibold text-teal-800 hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60">
+                  Appliquer etat
+                </button>
+                <button type="button" onClick={() => setIdsSelectionnes([])} className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
+          <table className="min-w-[1040px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
+                <th className="w-12 px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={idsSelectionPage.length > 0 && idsSelectionPage.every((id) => idsSelectionnes.includes(id))}
+                    onChange={(event) => basculerSelectionPage(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600"
+                    aria-label="Selectionner la page"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left font-semibold text-slate-600">Chambre</th>
                 <th className="px-4 py-3 text-left font-semibold text-slate-600">Mouvement</th>
                 <th className="px-4 py-3 text-left font-semibold text-slate-600">Executant</th>
@@ -221,10 +339,20 @@ export function SuiviOperational() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {chargement && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Chargement...</td></tr>}
-              {!chargement && tachesFiltrees.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Aucune tache programmee.</td></tr>}
+              {chargement && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Chargement...</td></tr>}
+              {!chargement && tachesFiltrees.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-500">Aucune tache programmee.</td></tr>}
               {!chargement && tachesPage.map((tache) => (
                 <tr key={tache.id}>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={idsSelectionnes.includes(tache.id)}
+                      disabled={tache.etat?.nom === 'TERMINE'}
+                      onChange={(event) => basculerSelection(tache.id, event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-teal-700 focus:ring-teal-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={`Selectionner ${tache.lieu?.nom || 'tache'}`}
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <p className="font-semibold text-slate-900">{tache.lieu?.nom}</p>
                     <p className="text-xs text-slate-500">{tache.lieu?.batiment?.nom}</p>

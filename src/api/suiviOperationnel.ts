@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import type { EtatMouvement, PlanningChambre } from './planningChambre'
-import type { TacheChambre, TacheChambrePayload, UrgenceTacheChambre } from './tachesChambres'
+import { estTacheChambreOperationnelle, type TacheChambre, type TacheChambrePayload, type UrgenceTacheChambre } from './tachesChambres'
 
 export type HistoriqueEtatTacheChambre = {
   id: string
@@ -15,8 +15,9 @@ export type HistoriqueEtatTacheChambre = {
 }
 
 const selectSuiviTacheChambre =
-  'id,id_planning_chambre,id_lieu,id_type_mouvement,date_mouvement,date_execution,date_limite,id_executant,id_etat,points,urgence,commentaire,motif_blocage,created_at,updated_at,' +
-  'planning_chambre:id_planning_chambre(id,id_lieu,date,id_type_mouvement,id_executant,id_etat,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))),' +
+  'id,id_planning_chambre,id_sejour_chambre,id_lieu,id_type_mouvement,date_mouvement,date_initiale,date_execution,date_limite,date_realisation,est_deplacee,type_generation,id_executant,id_etat,points,urgence,commentaire,motif_blocage,created_at,updated_at,' +
+  'planning_chambre:id_planning_chambre(id,id_lieu,id_sejour_chambre,date,id_type_mouvement,id_executant,id_etat,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),sejour_chambre:id_sejour_chambre(id,id_lieu,date_debut,date_fin,type_sejour,frequence_menage_semaine,jour_menage_1,jour_menage_2,est_actif,created_at,updated_at)),' +
+  'sejour_chambre:id_sejour_chambre(id,id_lieu,date_debut,date_fin,type_sejour,frequence_menage_semaine,jour_menage_1,jour_menage_2,est_actif,created_at,updated_at),' +
   'lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),' +
   'type_mouvement(id,nom,points,couleur),' +
   'executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),' +
@@ -26,7 +27,7 @@ const selectHistoriqueTacheChambre =
   'id,id_tache_chambre,ancien_id_etat,nouveau_id_etat,motif,modifie_par,created_at,ancien_etat:etat_mouvement!historique_etat_tache_chambre_ancien_id_etat_fkey(id,nom),nouveau_etat:etat_mouvement!historique_etat_tache_chambre_nouveau_id_etat_fkey(id,nom)'
 
 const selectPlanningChambreSuivi =
-  'id,id_lieu,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max))'
+  'id,id_lieu,id_sejour_chambre,date,id_type_mouvement,id_executant,id_etat,motif_blocage,updated_at,lieu:lieux(id,nom,code,id_batiment,id_categorie,id_executant_defaut,numero,est_actif,batiment:batiments(id,code,nom,id_executant_defaut),categorie:categories_lieu(id,code,nom),executant_defaut:executant(id,nom)),type_mouvement(id,nom,points,couleur),etat:etat_mouvement(id,nom),executant:executant(id,nom,id_domaine,domaine:domaine_executant(id,nom,capacite_max)),sejour_chambre:id_sejour_chambre(id,id_lieu,date_debut,date_fin,type_sejour,frequence_menage_semaine,jour_menage_1,jour_menage_2,est_actif,created_at,updated_at)'
 
 export async function listerTachesChambresSuivi(date: string) {
   await synchroniserTachesChambresDepuisPlanning(date)
@@ -39,7 +40,7 @@ export async function listerTachesChambresSuivi(date: string) {
     .returns<TacheChambre[]>()
 
   if (error) throw error
-  return data
+  return data.filter(estTacheChambreOperationnelle)
 }
 
 export async function synchroniserTachesChambresDepuisPlanning(date: string) {
@@ -64,11 +65,13 @@ export async function synchroniserTachesChambresDepuisPlanning(date: string) {
   const mouvementsDejaProgrammes = new Set(tachesExistantes.map((tache) => tache.id_planning_chambre).filter(Boolean))
   const payloads = mouvements
     .filter((mouvement) => !mouvementsDejaProgrammes.has(mouvement.id))
+    .filter((mouvement) => mouvementGenereTravailOperationnel(mouvement))
     .map<TacheChambrePayload>((mouvement) => ({
       id_planning_chambre: mouvement.id,
       id_lieu: mouvement.id_lieu,
       id_type_mouvement: mouvement.id_type_mouvement,
       date_mouvement: mouvement.date,
+      date_initiale: mouvement.date,
       date_execution: mouvement.date,
       date_limite: mouvement.date,
       id_executant: mouvement.id_executant || mouvement.lieu?.id_executant_defaut || mouvement.lieu?.batiment?.id_executant_defaut || null,
@@ -77,6 +80,7 @@ export async function synchroniserTachesChambresDepuisPlanning(date: string) {
       urgence: urgenceDepuisDate(mouvement.date),
       commentaire: null,
       motif_blocage: mouvement.motif_blocage || null,
+      type_generation: 'planning',
     }))
 
   if (payloads.length === 0) return []
@@ -88,7 +92,7 @@ export async function synchroniserTachesChambresDepuisPlanning(date: string) {
     .returns<TacheChambre[]>()
 
   if (error) throw error
-  return data
+  return data.filter(estTacheChambreOperationnelle)
 }
 
 export async function changerEtatTacheChambre(id: string, idEtat: string, motifBlocage: string | null) {
@@ -134,6 +138,12 @@ export const compterMouvementsBloques = compterTachesChambresBloquees
 function urgenceDepuisDate(date: string): UrgenceTacheChambre {
   const aujourdHui = formatDateInput(new Date())
   return date <= aujourdHui ? 'haute' : 'normale'
+}
+
+function mouvementGenereTravailOperationnel(mouvement: PlanningChambre) {
+  const nom = mouvement.type_mouvement?.nom.toUpperCase() || ''
+  const estRecoucheLongSejour = nom.includes('RECOUCHE') && mouvement.sejour_chambre?.type_sejour === 'long_sejour'
+  return !estRecoucheLongSejour
 }
 
 function formatDateInput(date: Date) {

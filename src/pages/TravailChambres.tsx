@@ -193,13 +193,14 @@ export function TravailChambres() {
     return mouvements
       .filter((mouvement) => !mouvementsDejaPlanifies.has(mouvement.id))
       .filter((mouvement) => mouvement.etat?.nom !== 'TERMINE')
-      .filter((mouvement) => estMouvementProgrammable(mouvement.type_mouvement?.nom))
+      .filter((mouvement) => mouvementGenereTravail(mouvement))
       .sort((a, b) => a.date.localeCompare(b.date) || (a.lieu?.nom || '').localeCompare(b.lieu?.nom || ''))
   }, [mouvements, mouvementsDejaPlanifies])
 
   const mouvementSelectionne = mouvementsDisponibles.find((mouvement) => mouvement.id === idMouvement)
   const travauxPrevusProgrammables = useMemo(() => {
     const tachesExistantes = taches
+      .filter((tache) => tacheGenereTravail(tache))
       .filter((tache) => estMouvementProgrammable(tache.type_mouvement?.nom))
       .map((tache) => ({
         id: `tache-${tache.id}`,
@@ -285,6 +286,7 @@ export function TravailChambres() {
     const terme = recherche.trim().toLowerCase()
 
     return taches
+      .filter((tache) => tacheGenereTravail(tache))
       .filter((tache) => batimentFiltre === 'tous' || tache.lieu?.id_batiment === batimentFiltre)
       .filter((tache) => executantFiltre === 'tous' || idsExecutantsTacheChambre(tache).includes(executantFiltre))
       .filter((tache) => etatFiltre === 'tous' || tache.id_etat === etatFiltre)
@@ -305,7 +307,7 @@ export function TravailChambres() {
   const itemsPlanning = useMemo(() => {
     const terme = recherche.trim().toLowerCase()
     const items: ItemPlanningTravail[] = [
-      ...taches.map((tache) => ({
+      ...taches.filter((tache) => tacheGenereTravail(tache)).map((tache) => ({
         id: `tache-${tache.id}`,
         planifie: true,
         date: tache.date_execution,
@@ -328,6 +330,7 @@ export function TravailChambres() {
       ...mouvements
         .filter((mouvement) => !mouvementsDejaPlanifies.has(mouvement.id))
         .filter((mouvement) => mouvement.etat?.nom !== 'TERMINE')
+        .filter((mouvement) => mouvementGenereTravail(mouvement))
         .map((mouvement) => ({
         id: `mouvement-${mouvement.id}`,
         planifie: false,
@@ -1251,7 +1254,7 @@ export function TravailChambres() {
                                               Modifier
                                             </button>
                                           )}
-                                          {item.mouvement && estMouvementProgrammable(item.mouvement.type_mouvement?.nom) && (
+                                          {item.mouvement && mouvementGenereTravail(item.mouvement) && (
                                             <button type="button" onClick={() => remplirDepuisMouvement(item.mouvement!)} className="mt-2 w-full rounded-md bg-amber-700 px-2 py-1.5 text-xs font-semibold text-white hover:bg-amber-800">
                                               Programmer
                                             </button>
@@ -1792,6 +1795,23 @@ function urgenceDepuisMouvement(dateMouvement: string, aujourdHui: string): Urge
 function estMouvementProgrammable(type?: string | null) {
   const nom = type?.toUpperCase() || ''
   return nom.includes('DEPART') || nom.includes('ARRIVEE') || nom.includes('RECOUCHE')
+}
+
+function mouvementGenereTravail(mouvement: PlanningChambre) {
+  const nom = mouvement.type_mouvement?.nom.toUpperCase() || ''
+  const estRecoucheLongSejour = nom.includes('RECOUCHE') && mouvement.sejour_chambre?.type_sejour === 'long_sejour'
+
+  return estMouvementProgrammable(mouvement.type_mouvement?.nom) && !estRecoucheLongSejour
+}
+
+function tacheGenereTravail(tache: TacheChambre) {
+  const nom = tache.type_mouvement?.nom.toUpperCase() || ''
+  const estRecoucheLongSejourAutomatique =
+    tache.type_generation === 'planning' &&
+    nom.includes('RECOUCHE') &&
+    tache.sejour_chambre?.type_sejour === 'long_sejour'
+
+  return !estRecoucheLongSejourAutomatique
 }
 
 function estTypeMenageManuel(type?: string | null) {

@@ -143,6 +143,16 @@ export function libelleExecutantsTacheChambre(tache: Pick<TacheChambre, 'executa
   return tache.executant?.nom || 'Non affecte'
 }
 
+export function estTacheChambreOperationnelle(tache: Pick<TacheChambre, 'type_generation' | 'type_mouvement' | 'sejour_chambre'>) {
+  const nom = tache.type_mouvement?.nom.toUpperCase() || ''
+  const estRecoucheLongSejourAutomatique =
+    tache.type_generation === 'planning' &&
+    nom.includes('RECOUCHE') &&
+    tache.sejour_chambre?.type_sejour === 'long_sejour'
+
+  return !estRecoucheLongSejourAutomatique
+}
+
 function normaliserPayloadTacheChambre(payload: TacheChambrePayload) {
   const idExecutants = Array.from(new Set(payload.id_executants ?? (payload.id_executant ? [payload.id_executant] : [])))
   return {

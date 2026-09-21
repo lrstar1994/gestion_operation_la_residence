@@ -13,6 +13,7 @@ import {
   type TachePeriodiquePlanning,
 } from './tachesPeriodiques'
 import {
+  estTacheChambreOperationnelle,
   idsExecutantsTacheChambre,
   listerTachesChambres,
   modifierTacheChambre,
@@ -74,7 +75,7 @@ export async function chargerSuiviDuJour(date: string): Promise<SuiviDuJour> {
   const femmesChambre: ItemFemmeChambre[] = []
   const nonAffectes: ItemNonAffecte[] = []
 
-  tachesChambres.forEach((tache) => {
+  tachesChambres.filter(estTacheChambreOperationnelle).forEach((tache) => {
     const ids = idsExecutantsTacheChambre(tache)
 
     if (ids.length === 0) {
