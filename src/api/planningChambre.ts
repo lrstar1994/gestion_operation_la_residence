@@ -208,8 +208,18 @@ export async function supprimerMouvementChambre(id: string) {
 export async function verifierConflitsPlanningChambre(payloads: PlanningChambrePayload[]) {
   if (payloads.length === 0) return [] as ConflitPlanningChambre[]
 
+  const idsTypesPayload = Array.from(new Set(payloads.map((payload) => payload.id_type_mouvement)))
+  const { data: typesPayloadData, error: typesPayloadError } = await supabase
+    .from('type_mouvement')
+    .select(selectTypeMouvement)
+    .in('id', idsTypesPayload)
+    .returns<TypeMouvement[]>()
+
+  if (typesPayloadError) throw typesPayloadError
+  const typesPayload = new Map(typesPayloadData.map((type) => [type.id, type]))
+
   const conditions = payloads
-    .map((payload) => `and(id_lieu.eq.${payload.id_lieu},date.eq.${payload.date},id_type_mouvement.eq.${payload.id_type_mouvement})`)
+    .map((payload) => `and(id_lieu.eq.${payload.id_lieu},date.eq.${payload.date})`)
     .join(',')
 
   const { data: existants, error } = await supabase
@@ -222,15 +232,20 @@ export async function verifierConflitsPlanningChambre(payloads: PlanningChambreP
 
   const parCle = new Map<string, PlanningChambre[]>()
   existants.forEach((mouvement) => {
-    const cle = cleMouvement(mouvement.id_lieu, mouvement.date, mouvement.id_type_mouvement)
+    const cle = cleMouvementJour(mouvement.id_lieu, mouvement.date)
     parCle.set(cle, [...(parCle.get(cle) || []), mouvement])
   })
 
   return payloads.reduce<ConflitPlanningChambre[]>((conflits, payload) => {
-    const existantsPayload = parCle.get(cleMouvement(payload.id_lieu, payload.date, payload.id_type_mouvement))
+    const existantsPayload = parCle.get(cleMouvementJour(payload.id_lieu, payload.date)) || []
+    const typePayload = typesPayload.get(payload.id_type_mouvement)
+    const conflitsPayload = existantsPayload.filter((mouvement) => {
+      if (mouvement.id_type_mouvement === payload.id_type_mouvement) return true
+      return mouvementsIncompatibles(typePayload?.nom, mouvement.type_mouvement?.nom)
+    })
 
-    if (existantsPayload?.length) {
-      conflits.push({ payload, existants: existantsPayload })
+    if (conflitsPayload.length) {
+      conflits.push({ payload, existants: conflitsPayload })
     }
 
     return conflits
@@ -388,6 +403,31 @@ export function calculerCharges(
 
 export function cleMouvement(idLieu: string, date: string, idTypeMouvement: string) {
   return `${idLieu}-${date}-${idTypeMouvement}`
+}
+
+function cleMouvementJour(idLieu: string, date: string) {
+  return `${idLieu}-${date}`
+}
+
+function mouvementsIncompatibles(typeA?: string | null, typeB?: string | null) {
+  return (estTypeIndisponibilite(typeA) && estTypeOccupationClient(typeB)) || (estTypeOccupationClient(typeA) && estTypeIndisponibilite(typeB))
+}
+
+function estTypeOccupationClient(type?: string | null) {
+  const nom = normaliserTypeMouvement(type)
+  return nom.includes('ARRIVEE') || nom.includes('DEPART') || nom.includes('RECOUCHE')
+}
+
+function estTypeIndisponibilite(type?: string | null) {
+  return normaliserTypeMouvement(type).includes('EN TRAVAUX')
+}
+
+function normaliserTypeMouvement(type?: string | null) {
+  return (type || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
 }
 
 export function idsExecutantsPlanningChambre(mouvement: Pick<PlanningChambre, 'id_executant' | 'executants'>) {

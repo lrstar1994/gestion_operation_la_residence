@@ -278,7 +278,7 @@ function estMouvementOccupation(mouvement: PlanningChambre) {
 
 function estTypeOccupation(nom?: string | null) {
   const valeur = normaliser(nom)
-  return ['ARRIVEE', 'DEPART', 'RECOUCHE'].includes(valeur)
+  return ['ARRIVEE', 'DEPART', 'RECOUCHE', 'EN TRAVAUX'].includes(valeur)
 }
 
 function normaliser(valeur?: string | null) {

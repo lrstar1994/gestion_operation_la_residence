@@ -143,7 +143,8 @@ function urgenceDepuisDate(date: string): UrgenceTacheChambre {
 function mouvementGenereTravailOperationnel(mouvement: PlanningChambre) {
   const nom = mouvement.type_mouvement?.nom.toUpperCase() || ''
   const estRecoucheLongSejour = nom.includes('RECOUCHE') && mouvement.sejour_chambre?.type_sejour === 'long_sejour'
-  return !estRecoucheLongSejour
+  const estMouvementTravailChambre = nom.includes('ARRIVEE') || nom.includes('DEPART') || nom.includes('RECOUCHE')
+  return estMouvementTravailChambre && !estRecoucheLongSejour
 }
 
 function formatDateInput(date: Date) {

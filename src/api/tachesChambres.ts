@@ -145,6 +145,8 @@ export function libelleExecutantsTacheChambre(tache: Pick<TacheChambre, 'executa
 
 export function estTacheChambreOperationnelle(tache: Pick<TacheChambre, 'type_generation' | 'type_mouvement' | 'sejour_chambre'>) {
   const nom = tache.type_mouvement?.nom.toUpperCase() || ''
+  if (nom.includes('EN TRAVAUX')) return false
+
   const estRecoucheLongSejourAutomatique =
     tache.type_generation === 'planning' &&
     nom.includes('RECOUCHE') &&

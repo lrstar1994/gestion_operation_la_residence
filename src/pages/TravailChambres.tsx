@@ -1806,6 +1806,8 @@ function mouvementGenereTravail(mouvement: PlanningChambre) {
 
 function tacheGenereTravail(tache: TacheChambre) {
   const nom = tache.type_mouvement?.nom.toUpperCase() || ''
+  if (nom.includes('EN TRAVAUX')) return false
+
   const estRecoucheLongSejourAutomatique =
     tache.type_generation === 'planning' &&
     nom.includes('RECOUCHE') &&
