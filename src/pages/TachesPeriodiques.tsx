@@ -44,8 +44,10 @@ export function TachesPeriodiques() {
   const [idPlanningAAttribuer, setIdPlanningAAttribuer] = useState<string | null>(null)
   const [idsTachesSelectionnees, setIdsTachesSelectionnees] = useState<string[]>([])
   const [idExecutantAttributionLot, setIdExecutantAttributionLot] = useState('')
+  const [etatLot, setEtatLot] = useState('')
   const [idsTachesAvenirSelectionnees, setIdsTachesAvenirSelectionnees] = useState<string[]>([])
   const [idExecutantAttributionAvenir, setIdExecutantAttributionAvenir] = useState('')
+  const [etatAvenir, setEtatAvenir] = useState('')
   const { estAdmin, peutAccederAuDomaine } = useAuth()
   const {
     taches,
@@ -328,6 +330,14 @@ export function TachesPeriodiques() {
     }
   }
 
+  async function changerEtatSelectionSuivi() {
+    const selection = planningSuivi.filter((item) => idsTachesSelectionnees.includes(item.id))
+    await changerEtatSelection(selection, etatLot, () => {
+      setIdsTachesSelectionnees([])
+      setEtatLot('')
+    })
+  }
+
   async function attribuerSelectionAvenir() {
     const etatAFaire = etats.find((etat) => etat.nom === 'A_FAIRE')
 
@@ -360,6 +370,64 @@ export function TachesPeriodiques() {
       await charger()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Attribution impossible.')
+    } finally {
+      setSoumission(false)
+    }
+  }
+
+  async function changerEtatSelectionAvenir() {
+    const selection = planningAvenir.filter((item) => idsTachesAvenirSelectionnees.includes(item.id))
+    await changerEtatSelection(selection, etatAvenir, () => {
+      setIdsTachesAvenirSelectionnees([])
+      setEtatAvenir('')
+    })
+  }
+
+  async function changerEtatSelection(selection: TachePeriodiquePlanning[], nomEtat: string, apresSucces: () => void) {
+    if (selection.length === 0) {
+      toast.error('Selectionnez au moins une tache.')
+      return
+    }
+
+    if (!nomEtat) {
+      toast.error('Choisissez un etat.')
+      return
+    }
+
+    if (nomEtat === 'ANNULEE' && !window.confirm(`Annuler ${selection.length} tache(s) ?`)) return
+
+    const etat = etats.find((item) => item.nom === nomEtat)
+    if (!etat) {
+      toast.error(`L'etat ${nomEtat} est introuvable.`)
+      return
+    }
+
+    setSoumission(true)
+    try {
+      if (nomEtat === 'TERMINE') {
+        const etatAFaire = etats.find((item) => item.nom === 'A_FAIRE')
+        if (!etatAFaire) {
+          toast.error("L'etat A faire est introuvable. Execute le script SQL des taches periodiques.")
+          return
+        }
+
+        await Promise.all(selection.map((item) => realiserTachePeriodique(item, {
+          id_executant: item.id_executant,
+          date_realisation: formatDateInput(new Date()),
+          duree_minutes: null,
+          commentaire: null,
+          idEtatAFaire: etatAFaire.id,
+        })))
+        toast.success(`${selection.length} tache(s) realisee(s).`)
+      } else {
+        await Promise.all(selection.map((item) => modifierPlanningTachePeriodique(item.id, { id_etat: etat.id })))
+        toast.success(`${selection.length} etat(s) mis a jour.`)
+      }
+
+      apresSucces()
+      await charger()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Changement groupe impossible.')
     } finally {
       setSoumission(false)
     }
@@ -548,7 +616,12 @@ export function TachesPeriodiques() {
                   {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
                 </select>
                 <button type="button" disabled={soumission || !idExecutantAttributionLot} onClick={() => void attribuerSelection()} className="h-10 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white disabled:opacity-60">Attribuer</button>
-                <button type="button" onClick={() => { setIdsTachesSelectionnees([]); setIdExecutantAttributionLot('') }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">Annuler</button>
+                <select value={etatLot} onChange={(e) => setEtatLot(e.target.value)} className={inputClass}>
+                  <option value="">Choisir un etat</option>
+                  {['A_FAIRE', 'EN_COURS', 'BLOQUE', 'ANNULEE', 'TERMINE'].map((etat) => <option key={etat} value={etat}>{libelleEtatTache(etat)}</option>)}
+                </select>
+                <button type="button" disabled={soumission || !etatLot} onClick={() => void changerEtatSelectionSuivi()} className="h-10 rounded-md border border-teal-700 bg-white px-3 text-sm font-semibold text-teal-800 disabled:opacity-60">Appliquer etat</button>
+                <button type="button" onClick={() => { setIdsTachesSelectionnees([]); setIdExecutantAttributionLot(''); setEtatLot('') }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">Annuler</button>
               </div>
             </div>
           )}
@@ -628,7 +701,12 @@ export function TachesPeriodiques() {
                   {executants.map((executant) => <option key={executant.id} value={executant.id}>{executant.nom}</option>)}
                 </select>
                 <button type="button" disabled={soumission || !idExecutantAttributionAvenir} onClick={() => void attribuerSelectionAvenir()} className="h-10 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white disabled:opacity-60">Attribuer</button>
-                <button type="button" onClick={() => { setIdsTachesAvenirSelectionnees([]); setIdExecutantAttributionAvenir('') }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">Annuler</button>
+                <select value={etatAvenir} onChange={(e) => setEtatAvenir(e.target.value)} className={inputClass}>
+                  <option value="">Choisir un etat</option>
+                  {['A_FAIRE', 'EN_COURS', 'BLOQUE', 'ANNULEE', 'TERMINE'].map((etat) => <option key={etat} value={etat}>{libelleEtatTache(etat)}</option>)}
+                </select>
+                <button type="button" disabled={soumission || !etatAvenir} onClick={() => void changerEtatSelectionAvenir()} className="h-10 rounded-md border border-teal-700 bg-white px-3 text-sm font-semibold text-teal-800 disabled:opacity-60">Appliquer etat</button>
+                <button type="button" onClick={() => { setIdsTachesAvenirSelectionnees([]); setIdExecutantAttributionAvenir(''); setEtatAvenir('') }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">Annuler</button>
               </div>
             </div>
           )}
