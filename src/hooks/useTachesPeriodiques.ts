@@ -5,11 +5,9 @@ import { estLieuChambre, listerLieux, type Lieu } from '../api/lieux'
 import { listerPlanning, type PlanningExecutant } from '../api/planning'
 import { listerEtatsMouvement, listerPlanningChambre, type EtatMouvement, type PlanningChambre } from '../api/planningChambre'
 import {
-  listerHistoriqueTachesPeriodiques,
   listerPlanningTachesPeriodiques,
   listerTachesPeriodiques,
   type TachePeriodique,
-  type TachePeriodiqueHistorique,
   type TachePeriodiquePlanning,
 } from '../api/tachesPeriodiques'
 
@@ -37,7 +35,6 @@ export type PropositionTache = {
 export function useTachesPeriodiques() {
   const [taches, setTaches] = useState<TachePeriodique[]>([])
   const [planning, setPlanning] = useState<TachePeriodiquePlanning[]>([])
-  const [historique, setHistorique] = useState<TachePeriodiqueHistorique[]>([])
   const [lieux, setLieux] = useState<Lieu[]>([])
   const [executants, setExecutants] = useState<Executant[]>([])
   const [etats, setEtats] = useState<EtatMouvement[]>([])
@@ -55,7 +52,6 @@ export function useTachesPeriodiques() {
       const [
         tachesResultat,
         planningResultat,
-        historiqueResultat,
         lieuxResultat,
         executantsResultat,
         etatsResultat,
@@ -64,7 +60,6 @@ export function useTachesPeriodiques() {
       ] = await Promise.all([
         listerTachesPeriodiques(),
         listerPlanningTachesPeriodiques(),
-        listerHistoriqueTachesPeriodiques(),
         listerLieux(),
         listerExecutants(),
         listerEtatsMouvement(),
@@ -74,7 +69,6 @@ export function useTachesPeriodiques() {
 
       setTaches(tachesResultat)
       setPlanning(planningResultat)
-      setHistorique(historiqueResultat)
       setLieux(lieuxResultat)
       setExecutants(executantsResultat)
       setEtats(etatsResultat)
@@ -147,7 +141,6 @@ export function useTachesPeriodiques() {
   return {
     taches,
     planning,
-    historique,
     lieux,
     executants,
     etats,

@@ -21,7 +21,7 @@ import {
 import { useAuth } from '../hooks/useAuth'
 import { type PropositionTache, useTachesPeriodiques } from '../hooks/useTachesPeriodiques'
 
-type Onglet = 'referentiel' | 'suivi' | 'avenir' | 'propositions' | 'historique'
+type Onglet = 'referentiel' | 'suivi' | 'avenir' | 'propositions'
 
 const priorites: PrioriteTache[] = ['haute', 'normale', 'basse']
 const lourdeurs: LourdeurTache[] = ['leger', 'moyen', 'lourd']
@@ -56,7 +56,6 @@ export function TachesPeriodiques() {
   const {
     taches,
     planning,
-    historique,
     lieux,
     executants,
     etats,
@@ -558,7 +557,6 @@ export function TachesPeriodiques() {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-950 sm:text-2xl">Taches periodiques</h1>
-          <p className="mt-1 text-sm text-slate-500">Referentiel, echeances, propositions et historique.</p>
         </div>
         <button type="button" onClick={() => void charger()} className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100">
           <RefreshCcw className="h-4 w-4" />
@@ -567,7 +565,7 @@ export function TachesPeriodiques() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {(['suivi', 'avenir', 'propositions', 'referentiel', 'historique'] as Onglet[]).map((item) => (
+        {(['suivi', 'avenir', 'propositions', 'referentiel'] as Onglet[]).map((item) => (
           <button key={item} type="button" onClick={() => setOnglet(item)} className={onglet === item ? 'rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white' : 'rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100'}>
             {libelleOnglet(item)}
           </button>
@@ -858,18 +856,6 @@ export function TachesPeriodiques() {
         </div>
       )}
 
-      {onglet === 'historique' && (
-        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-[760px] w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50"><tr><Th>Date</Th><Th>Tache</Th><Th>Lieu</Th><Th>Executant</Th><Th>Duree</Th></tr></thead>
-              <tbody className="divide-y divide-slate-200">
-                {historique.map((item) => <tr key={item.id}><Td>{formatDateCourte(item.date_realisation)}</Td><Td>{item.tache?.nom}</Td><Td>{item.lieu?.nom}</Td><Td>{item.executant?.nom || '-'}</Td><Td>{item.duree_minutes || '-'} min</Td></tr>)}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {realisation && <RealisationModal key={realisation.id} planning={realisation} onClose={() => setRealisation(null)} onSubmit={realiser} />}
       {report && <ReportModal planning={report} onClose={() => setReport(null)} onSubmit={reporter} />}
@@ -1061,7 +1047,7 @@ function payloadVide(): TachePeriodiquePayload {
 }
 
 function libelleOnglet(onglet: Onglet) {
-  return { referentiel: 'Referentiel', suivi: 'Suivi', avenir: 'A venir', propositions: 'Propositions', historique: 'Historique' }[onglet]
+  return { referentiel: 'Referentiel', suivi: 'Suivi', avenir: 'A venir', propositions: 'Propositions' }[onglet]
 }
 
 const inputClass = 'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100'
