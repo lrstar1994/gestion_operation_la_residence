@@ -10,7 +10,7 @@ import { GestionLieux } from './pages/GestionLieux'
 import { GestionTypesMouvement } from './pages/GestionTypesMouvement'
 import { GestionUtilisateurs } from './pages/GestionUtilisateurs'
 import { HistoriqueInterventions } from './pages/HistoriqueInterventions'
-import { HistoriqueChambres } from './pages/HistoriqueChambres'
+import { HistoriqueAutresLieux, HistoriqueChambres } from './pages/HistoriqueChambres'
 import { HistoriquePlanningChambres } from './pages/HistoriquePlanningChambres'
 import { Inscription } from './pages/Inscription'
 import { InterventionsMaintenance } from './pages/InterventionsMaintenance'
@@ -49,6 +49,7 @@ function LayoutPrive() {
           <Route path="planning" element={<PlanningHebdomadaire />} />
           <Route element={<ProtectedRoute domaines={['chambres', 'salles']} />}>
             <Route path="taches-periodiques" element={<TachesPeriodiques />} />
+            <Route path="historique-autres-lieux" element={<HistoriqueAutresLieux />} />
           </Route>
           <Route element={<ProtectedRoute domaine="chambres" />}>
             <Route path="planning-chambres" element={<PlanningChambres />} />

@@ -45,9 +45,13 @@ export function TachesPeriodiques() {
   const [idsTachesSelectionnees, setIdsTachesSelectionnees] = useState<string[]>([])
   const [idExecutantAttributionLot, setIdExecutantAttributionLot] = useState('')
   const [etatLot, setEtatLot] = useState('')
+  const [dateReportLot, setDateReportLot] = useState('')
+  const [motifReportLot, setMotifReportLot] = useState('')
   const [idsTachesAvenirSelectionnees, setIdsTachesAvenirSelectionnees] = useState<string[]>([])
   const [idExecutantAttributionAvenir, setIdExecutantAttributionAvenir] = useState('')
   const [etatAvenir, setEtatAvenir] = useState('')
+  const [dateReportAvenir, setDateReportAvenir] = useState('')
+  const [motifReportAvenir, setMotifReportAvenir] = useState('')
   const { estAdmin, peutAccederAuDomaine } = useAuth()
   const {
     taches,
@@ -338,6 +342,15 @@ export function TachesPeriodiques() {
     })
   }
 
+  async function reporterSelectionSuivi() {
+    const selection = planningSuivi.filter((item) => idsTachesSelectionnees.includes(item.id))
+    await reporterSelection(selection, dateReportLot, motifReportLot, () => {
+      setIdsTachesSelectionnees([])
+      setDateReportLot('')
+      setMotifReportLot('')
+    })
+  }
+
   async function attribuerSelectionAvenir() {
     const etatAFaire = etats.find((etat) => etat.nom === 'A_FAIRE')
 
@@ -381,6 +394,46 @@ export function TachesPeriodiques() {
       setIdsTachesAvenirSelectionnees([])
       setEtatAvenir('')
     })
+  }
+
+  async function reporterSelectionAvenir() {
+    const selection = planningAvenir.filter((item) => idsTachesAvenirSelectionnees.includes(item.id))
+    await reporterSelection(selection, dateReportAvenir, motifReportAvenir, () => {
+      setIdsTachesAvenirSelectionnees([])
+      setDateReportAvenir('')
+      setMotifReportAvenir('')
+    })
+  }
+
+  async function reporterSelection(selection: TachePeriodiquePlanning[], date: string, motif: string, apresSucces: () => void) {
+    if (selection.length === 0) {
+      toast.error('Selectionnez au moins une tache.')
+      return
+    }
+
+    if (!date) {
+      toast.error('Choisissez une nouvelle date.')
+      return
+    }
+
+    const reportables = selection.filter(peutReporterTache)
+    if (reportables.length === 0) {
+      toast.error('Aucune tache selectionnee ne peut etre reportee.')
+      return
+    }
+
+    const nonReportables = selection.length - reportables.length
+    setSoumission(true)
+    try {
+      await Promise.all(reportables.map((item) => reporterTachePeriodique(item.id, date, motif.trim() || null)))
+      toast.success(nonReportables > 0 ? `${reportables.length} tache(s) reportee(s). ${nonReportables} ignoree(s).` : `${reportables.length} tache(s) reportee(s).`)
+      apresSucces()
+      await charger()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Report groupe impossible.')
+    } finally {
+      setSoumission(false)
+    }
   }
 
   async function changerEtatSelection(selection: TachePeriodiquePlanning[], nomEtat: string, apresSucces: () => void) {
@@ -433,7 +486,7 @@ export function TachesPeriodiques() {
     }
   }
 
-  async function realiser(planningItem: TachePeriodiquePlanning, duree: number | null, commentaire: string | null) {
+  async function realiser(planningItem: TachePeriodiquePlanning, dateRealisation: string, duree: number | null, commentaire: string | null) {
     const etatAFaire = etats.find((etat) => etat.nom === 'A_FAIRE')
     if (!etatAFaire) {
       toast.error("L'etat A faire est introuvable. Execute le script SQL des taches periodiques.")
@@ -443,7 +496,7 @@ export function TachesPeriodiques() {
     try {
       await realiserTachePeriodique(planningItem, {
         id_executant: planningItem.id_executant,
-        date_realisation: formatDateInput(new Date()),
+        date_realisation: dateRealisation,
         duree_minutes: duree,
         commentaire,
         idEtatAFaire: etatAFaire.id,
@@ -485,12 +538,13 @@ export function TachesPeriodiques() {
       return
     }
 
-    if (!motif.trim()) {
-      toast.error('Le motif est obligatoire.')
+    if (!date) {
+      toast.error('Choisissez une nouvelle date.')
       return
     }
+
     try {
-      await reporterTachePeriodique(planningItem.id, date, motif.trim())
+      await reporterTachePeriodique(planningItem.id, date, motif.trim() || null)
       toast.success('Tache reportee.')
       setReport(null)
       await charger()
@@ -621,7 +675,10 @@ export function TachesPeriodiques() {
                   {['A_FAIRE', 'EN_COURS', 'BLOQUE', 'ANNULEE', 'TERMINE'].map((etat) => <option key={etat} value={etat}>{libelleEtatTache(etat)}</option>)}
                 </select>
                 <button type="button" disabled={soumission || !etatLot} onClick={() => void changerEtatSelectionSuivi()} className="h-10 rounded-md border border-teal-700 bg-white px-3 text-sm font-semibold text-teal-800 disabled:opacity-60">Appliquer etat</button>
-                <button type="button" onClick={() => { setIdsTachesSelectionnees([]); setIdExecutantAttributionLot(''); setEtatLot('') }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">Annuler</button>
+                <input type="date" value={dateReportLot} onChange={(e) => setDateReportLot(e.target.value)} className={inputClass} />
+                <input value={motifReportLot} onChange={(e) => setMotifReportLot(e.target.value)} placeholder="Motif optionnel" className={inputClass} />
+                <button type="button" disabled={soumission || !dateReportLot} onClick={() => void reporterSelectionSuivi()} className="h-10 rounded-md border border-amber-500 bg-white px-3 text-sm font-semibold text-amber-800 disabled:opacity-60">Reporter</button>
+                <button type="button" onClick={() => { setIdsTachesSelectionnees([]); setIdExecutantAttributionLot(''); setEtatLot(''); setDateReportLot(''); setMotifReportLot('') }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">Annuler</button>
               </div>
             </div>
           )}
@@ -706,7 +763,10 @@ export function TachesPeriodiques() {
                   {['A_FAIRE', 'EN_COURS', 'BLOQUE', 'ANNULEE', 'TERMINE'].map((etat) => <option key={etat} value={etat}>{libelleEtatTache(etat)}</option>)}
                 </select>
                 <button type="button" disabled={soumission || !etatAvenir} onClick={() => void changerEtatSelectionAvenir()} className="h-10 rounded-md border border-teal-700 bg-white px-3 text-sm font-semibold text-teal-800 disabled:opacity-60">Appliquer etat</button>
-                <button type="button" onClick={() => { setIdsTachesAvenirSelectionnees([]); setIdExecutantAttributionAvenir(''); setEtatAvenir('') }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">Annuler</button>
+                <input type="date" value={dateReportAvenir} onChange={(e) => setDateReportAvenir(e.target.value)} className={inputClass} />
+                <input value={motifReportAvenir} onChange={(e) => setMotifReportAvenir(e.target.value)} placeholder="Motif optionnel" className={inputClass} />
+                <button type="button" disabled={soumission || !dateReportAvenir} onClick={() => void reporterSelectionAvenir()} className="h-10 rounded-md border border-amber-500 bg-white px-3 text-sm font-semibold text-amber-800 disabled:opacity-60">Reporter</button>
+                <button type="button" onClick={() => { setIdsTachesAvenirSelectionnees([]); setIdExecutantAttributionAvenir(''); setEtatAvenir(''); setDateReportAvenir(''); setMotifReportAvenir('') }} className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700">Annuler</button>
               </div>
             </div>
           )}
@@ -811,7 +871,7 @@ export function TachesPeriodiques() {
         </div>
       )}
 
-      {realisation && <RealisationModal planning={realisation} executants={executants} onClose={() => setRealisation(null)} onSubmit={realiser} />}
+      {realisation && <RealisationModal key={realisation.id} planning={realisation} onClose={() => setRealisation(null)} onSubmit={realiser} />}
       {report && <ReportModal planning={report} onClose={() => setReport(null)} onSubmit={reporter} />}
       {occurrence && <OccurrenceModal tache={occurrence} lieux={lieux} onClose={() => setOccurrence(null)} onSubmit={creerOccurrence} />}
     </section>
@@ -891,27 +951,60 @@ function OccurrenceModal({ tache, lieux, onClose, onSubmit }: { tache: TachePeri
   )
 }
 
-function RealisationModal({ planning, executants, onClose, onSubmit }: { planning: TachePeriodiquePlanning; executants: Array<{ id: string; nom: string }>; onClose: () => void; onSubmit: (planning: TachePeriodiquePlanning, duree: number | null, commentaire: string | null) => Promise<void> }) {
+function RealisationModal({ planning, onClose, onSubmit }: {
+  planning: TachePeriodiquePlanning
+  onClose: () => void
+  onSubmit: (planning: TachePeriodiquePlanning, dateRealisation: string, duree: number | null, commentaire: string | null) => Promise<void>
+}) {
+  const aujourdHui = formatDateInput(new Date())
+  const [dateRealisation, setDateRealisation] = useState(aujourdHui)
   const [duree, setDuree] = useState('')
   const [commentaire, setCommentaire] = useState('')
   const [soumission, setSoumission] = useState(false)
 
-  async function valider() {
+  const estEnRetard = planning.date_echeance < aujourdHui
+
+  async function valider(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (soumission) return
     setSoumission(true)
     try {
-      await onSubmit(planning, duree ? Number(duree) : null, commentaire || null)
+      await onSubmit(planning, estEnRetard ? dateRealisation : aujourdHui, duree ? Number(duree) : null, commentaire || null)
     } finally {
       setSoumission(false)
     }
   }
 
-  return <Modal title="Marquer comme realisee" onClose={onClose}><p className="text-sm text-slate-600">{planning.tache?.nom} - {planning.lieu?.nom}</p><Champ label="Duree minutes"><input value={duree} onChange={(e) => setDuree(e.target.value)} type="number" className={inputClass} /></Champ><Champ label="Commentaire"><textarea value={commentaire} onChange={(e) => setCommentaire(e.target.value)} className={inputClass} /></Champ><div className="mt-4 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-md border px-3 py-2 text-sm font-semibold">Annuler</button><button type="button" disabled={soumission} onClick={() => void valider()} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{soumission ? 'Validation...' : 'Valider'}</button></div></Modal>
+  return (
+    <Modal title="Marquer comme realisee" onClose={onClose}>
+      <form onSubmit={valider}>
+        <p className="text-sm text-slate-600">{planning.tache?.nom} - {planning.lieu?.nom}</p>
+        {estEnRetard && (
+          <Champ label="Date de réalisation">
+            <input type="date" required max={aujourdHui} value={dateRealisation} onChange={(e) => setDateRealisation(e.target.value)} className={inputClass} />
+          </Champ>
+        )}
+        <Champ label="Duree minutes">
+          <input value={duree} onChange={(e) => setDuree(e.target.value)} type="number" step="any" className={inputClass} />
+        </Champ>
+        <Champ label="Commentaire">
+          <textarea value={commentaire} onChange={(e) => setCommentaire(e.target.value)} className={inputClass} />
+        </Champ>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-md border px-3 py-2 text-sm font-semibold">Annuler</button>
+          <button type="submit" disabled={soumission} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            {soumission ? 'Validation...' : 'Valider'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
 }
 
 function ReportModal({ planning, onClose, onSubmit }: { planning: TachePeriodiquePlanning; onClose: () => void; onSubmit: (planning: TachePeriodiquePlanning, date: string, motif: string) => void }) {
   const [date, setDate] = useState(planning.date_echeance)
   const [motif, setMotif] = useState('')
-  return <Modal title="Reporter la tache" onClose={onClose}><Champ label="Nouvelle echeance"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} /></Champ><Champ label="Motif"><textarea value={motif} onChange={(e) => setMotif(e.target.value)} className={inputClass} /></Champ><div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="rounded-md border px-3 py-2 text-sm font-semibold">Annuler</button><button onClick={() => onSubmit(planning, date, motif)} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white">Reporter</button></div></Modal>
+  return <Modal title="Reporter la tache" onClose={onClose}><Champ label="Nouvelle echeance"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputClass} /></Champ><Champ label="Motif optionnel"><textarea value={motif} onChange={(e) => setMotif(e.target.value)} className={inputClass} /></Champ><div className="mt-4 flex justify-end gap-2"><button onClick={onClose} className="rounded-md border px-3 py-2 text-sm font-semibold">Annuler</button><button onClick={() => onSubmit(planning, date, motif)} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white">Reporter</button></div></Modal>
 }
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {

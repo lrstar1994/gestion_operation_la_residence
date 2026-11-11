@@ -194,12 +194,12 @@ export async function realiserTachePeriodique(
   })
 }
 
-export async function reporterTachePeriodique(id: string, dateEcheance: string, motif: string) {
+export async function reporterTachePeriodique(id: string, dateEcheance: string, motif: string | null) {
   return modifierPlanningTachePeriodique(id, {
     date_echeance: dateEcheance,
     date_execution: dateEcheance,
     est_reportee: true,
-    motif_report: motif,
+    motif_report: motif?.trim() || null,
   })
 }
 

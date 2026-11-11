@@ -91,24 +91,43 @@ async function listerActionsIntervention(dateDebut: string, dateFin: string) {
     }))
 }
 
-async function listerActionsPeriodiques(dateDebut: string, dateFin: string) {
-  const { data, error } = await supabase
-    .from('tache_periodique_historique')
-    .select(selectTachePeriodiqueHistorique)
-    .gte('date_realisation', dateDebut)
-    .lte('date_realisation', dateFin)
-    .returns<TachePeriodiqueHistorique[]>()
+export async function listerHistoriqueAutresLieux(dateDebut: string, dateFin: string): Promise<HistoriqueChambre> {
+  const [lieux, actions] = await Promise.all([
+    listerLieux(),
+    listerActionsPeriodiques(dateDebut, dateFin, false),
+  ])
+  return { chambres: lieux.filter((lieu) => lieu.categorie && !estLieuChambre(lieu)), actions }
+}
 
-  if (error) throw error
+async function listerActionsPeriodiques(dateDebut: string, dateFin: string, chambres = true) {
+  const historique: TachePeriodiqueHistorique[] = []
+  const taillePage = 500
+  let debut = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('tache_periodique_historique')
+      .select(selectTachePeriodiqueHistorique)
+      .gte('date_realisation', dateDebut)
+      .lte('date_realisation', dateFin)
+      .order('date_realisation')
+      .order('id')
+      .range(debut, debut + taillePage - 1)
+      .returns<TachePeriodiqueHistorique[]>()
 
-  return data
-    .filter((item) => item.lieu && estLieuChambre(item.lieu))
+    if (error) throw error
+    if (data.length === 0) break
+    historique.push(...data)
+    debut += data.length
+  }
+
+  return historique
+    .filter((item) => item.lieu?.categorie && estLieuChambre(item.lieu) === chambres)
     .map<ActionHistoriqueChambre>((item) => ({
       id: `periodique-${item.id}`,
       date: item.date_realisation,
       id_lieu: item.id_lieu,
       type: 'periodique',
-      libelle: libelleCourt(item.tache?.nom || 'Tache periodique'),
+      libelle: item.tache?.nom?.trim() || 'Tache periodique',
     }))
 }
 
